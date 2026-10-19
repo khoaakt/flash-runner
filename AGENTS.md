@@ -21,7 +21,7 @@ Start with `README.md`, then `docs/ARCHITECTURE.md`; `docs/STATUS.md` says what 
 | `tests/` | `progs/` C programs diffed against an i386 container, `swf-src/` Haxe probes → `swf/`, `ext/` pages for `tools/ext-test.mjs`, `bench/` |
 | `tools/` | build scripts, test drivers, installers (`installer/`), `dis/` (small disassembler crate) |
 | `third_party/ppapi/` | Chromium PPAPI headers (BSD-3), input of `tools/gen-ppapi.py` |
-| `vendor-private/` | **git-ignored**: the Flash runtime(s) and the extension signing key you supply |
+| `vendor-private/` | **git-ignored**: the Flash runtime(s) and the extension signing key |
 
 ## Commands that work from a fresh clone
 

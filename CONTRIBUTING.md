@@ -10,7 +10,7 @@ described in [SECURITY.md](SECURITY.md).
 
 ## What you can and cannot bring
 
-- **Do not** include Adobe/HARMAN software, or links to unofficial copies of it. The runtime is supplied by the person running the project and lives in
+- **Do not** include Adobe/HARMAN software, or links to unofficial copies of it. The runtime stays on the machine of whoever runs the project, in
   the git-ignored `vendor-private/`.
 - **Do not** commit third-party assets (sample games, art, audio, video), signing keys, tokens, session logs or build output. Test media must be generated.
 - Do not add code that defeats Flash's end-of-life block, or that installs the extension by tampering with the browser's protected settings.
@@ -30,7 +30,7 @@ node web/lir-policy-test.mjs                  # and the other web/*-test.mjs and
 (cd native/helper && go vet ./... && go build -o /tmp/flash-helper .) && node native/helper-test.mjs /tmp/flash-helper
 ```
 
-Running real movies needs a Flash runtime you are entitled to use, placed in `vendor-private/` (see `vendor-private/README.md`), a built
+Running real movies needs a copy of Flash Player in `vendor-private/` (see `vendor-private/README.md`), a built
 `web/emu.wasm` (`tools/build-wasm.sh`) and the guest userland (`rootfs/build.sh`, `tools/build-guest.sh`; both need podman). The README has the
 full sequence, and [AGENTS.md](AGENTS.md) lists which command needs what. Please say in your pull request which of these you could run.
 

@@ -1,4 +1,4 @@
-# Never commit: the Flash runtime you supply, signing keys, credentials
+# Never commit: the Flash runtime, signing keys, credentials
 /vendor-private/*
 !/vendor-private/README.md
 *.pem
@@ -7,7 +7,7 @@
 .env
 .env.*
 
-# Build output (dist also holds the runtime you supplied, bundled into the extension)
+# Build output (dist also holds the Flash runtime, bundled into the extension)
 /target
 /dist/
 /guest/out/

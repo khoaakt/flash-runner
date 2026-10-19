@@ -5,12 +5,12 @@ each under its own licence. The list is for the source tree; a built extension a
 
 ## Adobe Flash Player: not included
 
-The repository contains **no Adobe or HARMAN code**. The emulator runs a `libpepflashplayer.so` (PPAPI, ia32 Linux) that you supply in
+The repository contains **no Adobe or HARMAN code**. The emulator runs a `libpepflashplayer.so` (PPAPI, ia32 Linux) that has to be copied into
 `vendor-private/`. Adobe Flash Player is proprietary software of Adobe Inc. / HARMAN International and is not covered by this project's
 licence; its use and redistribution are governed by your own agreement with its owner. "Adobe" and "Flash" are trademarks of Adobe Inc.
 This project is not affiliated with, endorsed by or sponsored by Adobe or HARMAN.
 
-A build of the extension (`tools/build-extension.mjs`) bundles the runtimes you supplied and writes a `NOTICE.txt` saying so. Treat such a build as
+A build of the extension (`tools/build-extension.mjs`) bundles the Flash runtimes from `vendor-private/` and writes a `NOTICE.txt` saying so. Treat such a build as
 containing third-party proprietary software: it is not something to publish.
 
 ### Observations of the runtime kept in this repository

@@ -9,7 +9,7 @@ Local-only inputs. **Everything here except this file is git-ignored and must ne
 | `libpepflashplayer.so` | any runtime you want the dev server and `ext-test` to use by default | `web/serve.mjs`, `tools/ext-test.mjs` (see its `--bundled` / `--runtime`) |
 | `extension-key.pem` | the RSA private key whose public half is `key` in `extension/manifest.json`; it fixes the extension's ID and signs the Linux CRX | `tools/build-installer-linux.mjs`, the two installer tests |
 
-You must obtain a Flash runtime you are entitled to use; the licence belongs to Adobe/HARMAN and this project neither supplies nor points to one.
+No Flash runtime comes with the project and it does not say where to get one. Use a copy you are licensed to use; the licence belongs to Adobe/HARMAN.
 Builds from 32.0.0.465 on show Adobe's "blocked" screen and are not supported.
 
 ## Your own extension ID (forks)

@@ -1,4 +1,4 @@
-// Storage for the user-supplied Flash runtime and settings, shared by the options page and the player.
+// Storage for the Flash runtime the user installs, and for the settings,, shared by the options page and the player.
 // The runtime (libpepflashplayer.so) lives only in this browser profile's IndexedDB — it is never bundled
 // with the extension and never leaves the machine.
 

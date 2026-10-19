@@ -1,7 +1,7 @@
 # flash-runner
 
-Play Flash (`.swf`) in Chrome without a Flash plugin. flash-runner runs Adobe's own Flash Player inside a browser tab by emulating a 32-bit
-Linux PC in WebAssembly. You supply the Flash Player file; this repository does not contain it.
+Play Flash (`.swf`) in Chrome and Firefox without a Flash plugin. flash-runner runs Adobe's own Flash Player inside a browser tab by emulating a 32-bit
+Linux PC in WebAssembly. Flash Player itself is not included in this repository.
 
 > Not affiliated with Adobe or HARMAN. Flash is end-of-life and the versions this runs have known security bugs, so do not
 > open content you do not trust. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licensing.
@@ -13,7 +13,7 @@ flowchart LR
     page["Web page with<br/>a Flash movie"] -->|the extension swaps the embed<br/>for a player| worker
     subgraph worker["Browser worker"]
         direction TB
-        flash["Adobe Flash Player<br/>(the file you supply)"]
+        flash["Adobe Flash Player<br/>(libpepflashplayer.so)"]
         emu["emu.wasm: an x86 CPU and<br/>a small Linux, written in Rust"]
         host["pepper.js: answers<br/>Flash's requests"]
         flash <-->|runs on| emu
@@ -23,13 +23,13 @@ flowchart LR
     host -.->|raw TCP only| helper["Socket helper<br/>(small native program)"]
 ```
 
-The plugin believes it runs on a Linux PC. Whenever it asks its "browser" for something (draw this, play that, fetch a URL), the emulator
-stops and `pepper.js` does it with the real browser APIs. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+To the plugin this looks like a Linux PC. When it asks the browser for something (draw, play a sound, fetch a URL), the emulator pauses and
+`pepper.js` does it with the real browser APIs. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Screenshots
 
-Flash Player 32.0.0.363 playing real pages in the browser through the extension. These are screenshots of the whole browser window (Windows, taken with `tools/window-shot.ps1`),
-with the add-on's own settings tab and the extensions button visible. The pages belong to their owners and are shown only to demonstrate playback.
+Flash Player 32.0.0.363 playing real pages through the extension. Each screenshot is a whole browser window on Windows, captured with `tools/window-shot.ps1`; the add-on's
+settings tab and the extensions button are visible. The pages belong to their owners and are shown only to demonstrate playback.
 
 <table>
   <tr>
@@ -52,7 +52,7 @@ with the add-on's own settings tab and the extensions button visible. The pages 
 
 ## What you need
 
-- **A Flash Player plugin you are allowed to use:** `libpepflashplayer.so`, 32-bit Linux PPAPI. Put it in `vendor-private/` (git-ignored; see
+- **Flash Player itself** (`libpepflashplayer.so`, 32-bit Linux PPAPI), which is not included. Copy it into `vendor-private/` (git-ignored; see
   [vendor-private/README.md](vendor-private/README.md) for the file names). Tested with 32.0.0.363 (the last build before Adobe's end-of-life
   block, preferred) and 26.0.0.151. Builds from 32.0.0.465 on show Adobe's "blocked" screen and do not run; this project does not try to bypass that.
 - **Chrome, Chromium or Edge, or Firefox 140 or newer.** WebGPU is used when available, with a 2D fallback.
@@ -74,7 +74,7 @@ and podman), run it as `NO_HELPER=1 node tools/build-extension.mjs`.
 
 ```mermaid
 flowchart LR
-    plugin["libpepflashplayer.so<br/>you supply it, in vendor-private/"] --> build
+    plugin["libpepflashplayer.so<br/>copied into vendor-private/"] --> build
     parts["emulator and guest files<br/>(the three build scripts)"] --> build["node tools/build-extension.mjs"]
     build --> dist["dist/extension"]
     dist -->|Load unpacked| browser["Chrome"]
@@ -139,4 +139,4 @@ Contributing: [CONTRIBUTING.md](CONTRIBUTING.md), and [AGENTS.md](AGENTS.md) for
 ## License
 
 [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option. Third-party parts keep their licences ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
-Adobe Flash Player, which you supply, is not part of this project and is not covered by it.
+Adobe Flash Player is not part of this project and is not covered by it.

@@ -229,7 +229,7 @@ execute permission. Guards preflight stack/argument accesses and aliases before 
 unusual cases retry the original instruction stream. Registers, arithmetic flags and dead stack
 bytes follow the original function, including its conditional second load.
 
-The signature occurs once in an executable segment of each locally supplied plugin tested
+The signature occurs once in an executable segment of each local copy of the plugin tested
 (26.0.0.151, 32.0.0.363, default plugin). This was verified by byte scanning, not symbol recovery.
 20,000 randomized differential cases and tail-byte/protection invalidation tests pass.
 The standalone fixture did **not** demonstrate a consistent performance benefit.
@@ -298,7 +298,7 @@ The Node runner also accepts `--jit N --aot trusted-file.aot`. Compilation happe
 runtime installation still pays V8 module compilation/instantiation. Native/browser layouts,
 including every baked-in Cpu field offset, must match exactly. A bundle from a different boot
 may be rejected. `tools/build-plugin-aot.mjs` generates portable function bundles offline for
-locally supplied runtimes. Packaging includes these assets. The worker selects only the complete
+local copies of the runtimes. Packaging includes these assets. The worker selects only the complete
 matching SHA-256 image and binds at `HC_PLUGIN_LOADED`, after dlopen relocations but before
 PPP_InitializeModule and plugin-created threads. Broader metadata-selected batches use
 `--plugin-functions`, emitted as numbered modules plus `.index.json`; `--portable-index` loads
@@ -339,7 +339,7 @@ ELF loop into the real emulator dispatcher. It checks the program result plus st
 layout, truncated bundles and duplicate installation. Native tests also check AOT park/unpark and SMC.
 These tests establish the supported contracts, not full Flash integration or gameplay performance.
 
-An offline smoke compile of the supplied 32.0.0.363 plugin's verified comparator at ELF virtual
+An offline smoke compile of the 32.0.0.363 plugin's verified comparator at ELF virtual
 address `0xa4de54`, limited to its 36-byte span, produced three basic-block regions and 1,934 wasm
 bytes. This establishes that the compiler also accepts that shipped-runtime function, not just
 the synthetic ELF fixture. Its test layout addresses were illustrative; that artifact was not

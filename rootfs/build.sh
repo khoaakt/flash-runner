@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds rootfs/out/rootfs.tar: the minimal i386 glibc userland the guest needs (Debian bookworm).
-# Nothing from Adobe/Harman goes in here; the Flash runtime is supplied separately at run time.
+# Nothing from Adobe/Harman goes in here; the Flash runtime is added separately, at run time.
 set -eu
 cd "$(dirname "$0")"
 mkdir -p out

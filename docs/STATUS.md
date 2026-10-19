@@ -229,8 +229,8 @@ x86 during binding.
    Number adapter; more than 2 distinct constants or 5 steps. Wasm f64 semantics must not silently replace native
    MXCSR/x87 behavior: the adapter refuses anything outside the interpreter fast path.
 4. **The original NanoJIT assembler still runs once** for every supported method. Replacement affects later execution only.
-5. **No controlled profile of a real game exists.** Profiling one needs a page you are entitled to play (often with a
-   session token only you have). Without it the families above are prioritized from synthetic fixtures. A census (which captured methods
+5. **No controlled profile of a real game exists.** Profiling one needs the page of a real game (often with a
+   session token that only the player has). Without it the families above are prioritized from synthetic fixtures. A census (which captured methods
    lowered, which refusal reasons dominate, how many calls reach each) from a real session would rank the missing shapes
    by actual call counts. Endpoint EIP samples are syscall-biased; do not revive the withdrawn `0x65631ba0` attribution.
 6. **Memory on the dynamic-call path is 0.93x** (see the table): the generic invoker path, not the leaf, dominates and the
@@ -261,7 +261,7 @@ x86 during binding.
 
 ## Verification commands
 
-Everything except the first block needs the Flash runtime you supply in `vendor-private/`; building SWFs needs Haxe, and building
+Everything except the first block needs Flash Player in `vendor-private/`; building SWFs needs Haxe, and building
 the wasm and guest needs the toolchain from the README. `cargo test -p emu --lib` needs none of them.
 
 ```sh
