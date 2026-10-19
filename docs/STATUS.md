@@ -68,6 +68,16 @@ geckodriver 0.37.1 (temporary add-on, headless): the add-on installs and gets th
 requests are those of the embedding page (the rewrite rule matches the extension's host, a per-install UUID in Firefox); the socket helper answers over Firefox native messaging.
 The presenter is the 2D one (no WebGPU adapter in this headless run). Not checked: Stage3D, audio output, macOS or Linux, Firefox ESR, a signed install, performance against Chrome.
 
+## PoC: RTMP streaming
+
+Branch `poc/missing-features`. `tests/swf-src/RtmpProbe.hx` opens a `NetConnection` to an RTMP server and plays a `NetStream` into a `Video`; it paints the PASS square once the stream clock reaches 2 s.
+The server is nginx-rtmp in podman serving an ffmpeg-generated stream (`tools/rtmp-poc.sh`); the page is `tests/ext/rtmp.html?host=<server address>`.
+
+- **Chrome (works):** `node tools/ext-test.mjs --bundled --page "tests/ext/rtmp.html?host=<ip>" --expect-pass` passes: `NetConnection.Connect.Success`, `NetStream.Play.Start`, metadata 320x240, the video and the clock advance (`time=44` after 16 s). No emulator or helper change was needed: Flash's RTMP runs over the existing `PPB_TCPSocket_Private` path and the native helper. The helper had to be started with `allowPrivate`, because the test server is on a private address.
+- **Firefox (not working):** the movie ends with `NetConnection.Connect.Failed`. Cause found so far: the player frame's `chrome.runtime.connectNative` fails with "An unexpected error occurred" and the helper process is never started. `connectNative` from the settings page works (`tools/firefox-test.mjs` now checks that), and `sendNativeMessage` works. Routing the port through the background script did not change the result, so that change was not kept. Open.
+- Not tested: RTMPS, RTMPT, authentication, recording or publishing to a server, a stream from the internet, other servers than nginx-rtmp.
+- On this Windows machine a podman published port accepts connections but carries no data; the test reaches the server through the podman VM's address.
+
 ## Debug log setting (extension)
 
 `log` (default `false`) in `extension/options/runtime-store.js`, switch "Debug log" under Troubleshooting in the options page

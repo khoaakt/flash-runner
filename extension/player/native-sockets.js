@@ -18,8 +18,8 @@ export class NativeSockets {
     if (this.missing && Date.now() - this.missingAt < RETRY_MS) return false;
     try { this.port = chrome.runtime.connectNative(HOST); } catch (e) { this.gone(String(e && e.message || e)); return false; }
     this.port.onMessage.addListener((m) => this.fromHelper(m));
-    this.port.onDisconnect.addListener(() => {
-      const why = chrome.runtime.lastError?.message || 'helper exited';
+    this.port.onDisconnect.addListener((p) => {
+      const why = p?.error?.message || chrome.runtime.lastError?.message || 'helper exited';
       this.port = null;
       for (const rid of this.pending) this.deliver({ rid, ok: false, code: 'EHELPER', message: why });
       this.pending.clear();
@@ -33,6 +33,7 @@ export class NativeSockets {
   /** connectNative never throws for an absent host: the port just disconnects, with the reason in lastError. */
   gone(why) {
     const absent = NOT_INSTALLED.test(why);
+    this.log?.('[sock] helper: ' + why);
     this.onProblem(absent ? 'Flash sockets need the helper: install it from the extension settings (' + why + ')' : why);
     if (!absent) return;
     this.missing = true; this.missingAt = Date.now();

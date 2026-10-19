@@ -32,7 +32,7 @@ const pageEval = arg('--page-eval', null), frameEval = arg('--frame-eval', null)
 const keepOpenArg = arg('--keep-open', null), keepOpen = keepOpenArg !== null;
 const keepMinutes = keepOpen ? (Number.isFinite(+keepOpenArg) && +keepOpenArg > 0 ? +keepOpenArg : 30) : 0;
 const also = String(arg('--also', '')).split(',').filter(Boolean);
-const settings = { enabled: true, openSwfLinks: true, autoplayMax: 8, clickToPlay: false, log: true, fpsLog: true };
+const settings = { enabled: true, openSwfLinks: true, autoplayMax: 8, clickToPlay: false, log: true, fpsLog: true, diag: true };
 process.argv.forEach((a, i) => { if (a === '--setting') { const kv = process.argv[i + 1] || ''; const j = kv.indexOf('='); settings[kv.slice(0, j)] = JSON.parse(kv.slice(j + 1)); } });
 // the add-on's moz-extension:// host is a random UUID per profile unless the profile pins it
 const GECKO_ID = JSON.parse(readFileSync(join(root, 'tools/firefox/manifest-overlay.json'), 'utf8')).set.browser_specific_settings.gecko.id;
@@ -105,6 +105,8 @@ try {
   check('host permission for all sites is granted', (opt?.origins || []).some((o) => o === '<all_urls>' || o === '*://*/*'), 'content scripts will not run without it');
   const hello = await exec(`return await chrome.runtime.sendNativeMessage('com.flashrunner.sockets', { t: 'hello', rid: 1 });`);
   check('the socket helper answers through Firefox native messaging', !!hello && hello.ok === true && hello.version === 2, JSON.stringify(hello));
+  const port = await exec(`const p = chrome.runtime.connectNative('com.flashrunner.sockets'); const got = await new Promise((res) => { p.onMessage.addListener((m) => res(m)); p.onDisconnect.addListener((q) => res({ disconnected: String(q && q.error && q.error.message) })); p.postMessage({ t: 'hello', rid: 2 }); setTimeout(() => res({ timeout: true }), 4000); }); try { p.disconnect(); } catch {} return got;`);
+  check('a long-lived native port to the helper works', !!port && port.ok === true, JSON.stringify(port));
   const runtimes = await exec(`const m = await import('./runtime-store.js'); const r = await m.getActiveRuntime(); return r ? { bundled: !!r.bundled, size: r.size, id: r.id } : null;`);
   check('a bundled Flash runtime is available', !!runtimes && !runtimes.__error && runtimes.bundled, JSON.stringify(runtimes));
 
