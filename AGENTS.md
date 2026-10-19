@@ -37,7 +37,7 @@ for t in tools/native-sockets-test.mjs tools/zip-test.mjs web/context-menu-test.
 (cd native/helper && go vet ./... && go build -o /tmp/flash-helper . ) && node native/helper-test.mjs /tmp/flash-helper
 ```
 
-Tested with Rust 1.99 (stable), Node 24, Go 1.27. The JS tools use only Node built-ins: do not add npm dependencies outside `ui/`.
+Tested with Rust 1.99 (stable), Node 24, Go 1.27 (the helper needs Go 1.26 or newer). The JS tools use only Node built-ins: do not add npm dependencies outside `ui/`.
 
 ## Commands that need local resources
 

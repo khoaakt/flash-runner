@@ -35,3 +35,7 @@ custom*.png
 __pycache__/
 *.pyc
 .claude/
+
+# a plain `go build` in native/helper writes its binary next to the sources
+native/helper/flashhelper
+native/helper/flashhelper.exe
