@@ -4,6 +4,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -16,11 +17,16 @@ var registryBases = []string{
 	`Software\BraveSoftware\Brave-Browser\NativeMessagingHosts`,
 	`Software\Chromium\NativeMessagingHosts`,
 	`Software\Vivaldi\NativeMessagingHosts`,
+	`Software\Mozilla\NativeMessagingHosts`, // Firefox
 }
 
-func registerSystem(binPath string, mf []byte) (int, error) {
+func registerSystem(binPath string, mf, mfFirefox []byte) (int, error) {
 	mfPath := filepath.Join(filepath.Dir(binPath), hostName+".json")
+	mfFirefoxPath := filepath.Join(filepath.Dir(binPath), hostName+".firefox.json")
 	if err := writeFile(mfPath, mf); err != nil {
+		return 0, err
+	}
+	if err := writeFile(mfFirefoxPath, mfFirefox); err != nil {
 		return 0, err
 	}
 	n := 0
@@ -29,7 +35,11 @@ func registerSystem(binPath string, mf []byte) (int, error) {
 		if err != nil {
 			return n, err
 		}
-		err = k.SetStringValue("", mfPath)
+		path := mfPath
+		if strings.HasPrefix(base, `Software\Mozilla`) {
+			path = mfFirefoxPath // Firefox's manifest names add-on ids, not extension origins
+		}
+		err = k.SetStringValue("", path)
 		k.Close()
 		if err != nil {
 			return n, err

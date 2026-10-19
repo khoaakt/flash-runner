@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-func registerSystem(string, []byte) (int, error) { return 0, nil } // per-user manifests only (see browserHostDirs)
-func unregisterSystem() int                      { return 0 }
-func prepareInstallUI()                          {}
+func registerSystem(string, []byte, []byte) (int, error) { return 0, nil } // per-user manifests only (see browserHostDirs)
+func unregisterSystem() int                              { return 0 }
+func prepareInstallUI()                                  {}
 
 // macOS: a dialog through AppleScript so a double-click from Finder shows something; elsewhere the text on stdout is all there is.
 func showDialog(title, text string, ok bool) {

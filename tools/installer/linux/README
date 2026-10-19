@@ -8,8 +8,8 @@ What this package installed
       Edge (/usr/share/microsoft-edge/extensions) and Chromium (/usr/share/chromium/extensions)
   /usr/lib/flash-helper/flash-helper
       the online game helper, which gives games the raw TCP sockets a browser cannot open; it is registered
-      system-wide for Chrome, Chromium, Edge and Brave (/etc/.../native-messaging-hosts/com.flashrunner.sockets.json)
-      and only this extension's ID may talk to it
+      system-wide for Chrome, Chromium, Edge, Brave and Firefox (/etc/.../native-messaging-hosts/com.flashrunner.sockets.json,
+      /usr/lib/mozilla/native-messaging-hosts for Firefox) and only this extension's ID may talk to it
 
 Using it
   Restart the browser. The extension shows up in chrome://extensions (edge://extensions) by itself; on Linux the browser does

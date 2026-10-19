@@ -36,7 +36,8 @@ import (
 const (
 	hostName   = "com.flashrunner.sockets"
 	extOrigin  = "chrome-extension://njekchgflloenifdhaehploldjanaonk/"
-	version    = 2 // the Node.js helper this replaces was 1
+	firefoxID  = "flash-runner@khoaakt.github.io" // must equal browser_specific_settings.gecko.id in tools/firefox/manifest-overlay.json
+	version    = 2                                // the Node.js helper this replaces was 1
 	chunk      = 384 * 1024
 	maxMessage = 80 << 20
 	dialWait   = 15 * time.Second
@@ -468,6 +469,10 @@ func main() {
 			return
 		}
 	}
+	if len(args) == 2 && args[1] == firefoxID && strings.HasSuffix(strings.ToLower(args[0]), ".json") { // started by Firefox: <manifest path> <add-on id>
+		serve()
+		return
+	}
 	cmd := ""
 	if len(args) > 0 {
 		cmd = args[0]
@@ -477,12 +482,12 @@ func main() {
 		serve()
 	case "--version", "version":
 		fmt.Println(version)
-	case "manifest": // manifest <absolute path of the helper>: the JSON Chrome reads (used by the package builders)
+	case "manifest": // manifest <absolute path of the helper> [--firefox]: the JSON the browser reads (used by the package builders)
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: manifest <path>")
+			fmt.Fprintln(os.Stderr, "usage: manifest <path> [--firefox]")
 			os.Exit(2)
 		}
-		os.Stdout.Write(manifestJSON(args[1]))
+		os.Stdout.Write(manifestJSON(args[1], len(args) > 2 && args[2] == "--firefox"))
 	case "uninstall":
 		os.Exit(runInstall(false, args[1:]))
 	case "", "install":
@@ -492,7 +497,7 @@ func main() {
 		}
 		os.Exit(runInstall(true, rest))
 	default:
-		fmt.Fprintln(os.Stderr, "usage: flash-helper [install|uninstall] [--dir <NativeMessagingHosts dir>] [--quiet]")
+		fmt.Fprintln(os.Stderr, "usage: flash-helper [install|uninstall] [--dir <NativeMessagingHosts dir>] [--firefox-dir <dir>] [--quiet]")
 		os.Exit(2)
 	}
 }

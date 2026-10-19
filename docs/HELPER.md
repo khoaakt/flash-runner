@@ -25,6 +25,21 @@ sequenceDiagram
     Note over F,S: Flash first fetches a socket policy file (port 843, then the target port)<br/>through this same path, so its own security rules stay in force
 ```
 
+## Chrome and Firefox
+
+Chromium-family browsers start the helper with the extension's origin as an argument and check `allowed_origins` in the manifest. Firefox starts it with the manifest path and the
+add-on id (`flash-runner@khoaakt.github.io`) and checks `allowed_extensions`; its manifest schema rejects the Chromium key. So there are two manifests per install:
+`com.flashrunner.sockets.json` (Chromium) and, on Windows, `com.flashrunner.sockets.firefox.json` (Firefox). Where Firefox looks:
+
+| OS | Firefox reads |
+|---|---|
+| Windows | registry `HKCU\Software\Mozilla\NativeMessagingHosts\com.flashrunner.sockets` (default value = manifest path) |
+| macOS | `~/Library/Application Support/Mozilla/NativeMessagingHosts/`, or `/Library/Application Support/Mozilla/NativeMessagingHosts/` for all users |
+| Linux | `~/.mozilla/native-messaging-hosts/`, or `/usr/lib/mozilla/native-messaging-hosts/` for all users |
+
+`flash-helper install --firefox-dir <dir>` and `tools/install-native-host.sh --firefox-dir <dir>` write the Firefox manifest into one directory (tests, unusual setups).
+`flash-helper manifest <path> --firefox` prints it. The helper only serves when Chrome gives it an extension origin, or Firefox gives it a `.json` path and the add-on id above.
+
 ## Rules it enforces
 
 It refuses loopback, private and link-local destinations unless `~/.flash-runner/sockets.json` contains `{"allowPrivate": true}`. The same file
@@ -48,3 +63,4 @@ When a movie opens a socket and no helper is installed, the player shows a bar w
 | `node tools/native-sockets-test.mjs` | the detection logic in the player (reported once, retried now and then, withdrawn when the helper appears), no browser |
 | `node tools/ext-test.mjs --native --page tests/ext/sock.html --seconds 10` | `tests/swf/sock.swf` through the real helper in Chrome, against an echo and policy server |
 | `node tools/ext-test.mjs --no-helper --page tests/ext/sock.html` | the "helper missing" notice in Chrome |
+| `node tools/firefox-test.mjs --geckodriver <path> --page tests/ext/compat.html` | that the helper answers through Firefox native messaging (among other checks) |

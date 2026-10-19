@@ -22,6 +22,29 @@ The user does Developer mode + Load unpacked once. A CRX does not help there (bl
 `dist/flash-runner_<version>_{amd64,arm64}.deb`. No Windows installer exists (an NSIS plan was dropped: the extension would still need
 Load unpacked); the launcher below was measured but not built; the macOS `.pkg` is an optional alternative.
 
+## Firefox
+
+`node tools/build-extension.mjs --firefox [--zip]` writes `dist/firefox` (and an unsigned `dist/flash-runner-firefox.xpi` with `--zip`): the same extension with the manifest changes
+in `tools/firefox/manifest-overlay.json` (an event page instead of a service worker, `options_ui`, the add-on id `flash-runner@khoaakt.github.io`, Firefox 140 or newer).
+
+```mermaid
+flowchart TD
+    build["node tools/build-extension.mjs --firefox --zip"] --> dir["dist/firefox"]
+    build --> xpi["dist/flash-runner-firefox.xpi (unsigned)"]
+    dir -->|"about:debugging, Load Temporary Add-on"| temp["works until Firefox restarts"]
+    xpi -->|"signed by Mozilla (unlisted, you need an AMO account)"| signed["install the signed .xpi: permanent"]
+    xpi -->|"Developer Edition, Nightly or ESR with xpinstall.signatures.required = false"| unsigned["install the unsigned .xpi: permanent"]
+```
+
+Why it is not a one-click install: release Firefox only keeps signed add-ons, and this one cannot be listed on addons.mozilla.org. It bundles Adobe's Flash Player (a binary Mozilla's
+review does not accept and we may not redistribute), carries the socket-helper installers, and uses indirect `eval` for the page scripting bridge. Self-distribution needs Mozilla's
+signing for unlisted add-ons (`web-ext sign`, your own API keys). `web-ext lint` reports no errors; its warnings are exactly those points.
+
+The socket helper needs its own manifest for Firefox: Firefox names the add-ons that may start the helper in `allowed_extensions` and rejects a manifest that carries the Chromium
+`allowed_origins` key, so each browser family gets a separate file (see [HELPER.md](HELPER.md)). The installers write both.
+
+Checked with Firefox 157 on Windows only. Not checked: macOS and Linux Firefox, Firefox ESR, Stage3D, audio.
+
 ## Linux packages (`dist/flash-runner_*_{amd64,arm64}.deb`)
 
 ```sh

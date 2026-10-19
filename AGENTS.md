@@ -32,7 +32,7 @@ cargo test -p emu --lib                                           # ~30 s; 194 p
 cargo build --release --target wasm32-unknown-unknown -p emu --lib   # the wasm build must keep compiling (needs: rustup target add wasm32-unknown-unknown)
 for t in tools/native-sockets-test.mjs tools/zip-test.mjs web/context-menu-test.mjs web/lir-policy-test.mjs web/log-setting-test.mjs \
          web/nanojit-leaf-test.mjs web/nanojit-loop-test.mjs web/nanojit-memory-test.mjs web/nanojit-number-test.mjs \
-         web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs; do node "$t" || exit 1; done
+         web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs tools/firefox-manifest-test.mjs; do node "$t" || exit 1; done
 (cd ui && npm ci && npm run build)                                # type-checks and builds the settings UI
 (cd native/helper && go vet ./... && go build -o /tmp/flash-helper . ) && node native/helper-test.mjs /tmp/flash-helper
 ```
@@ -46,6 +46,7 @@ Tested with Rust 1.99 (stable), Node 24, Go 1.27. The JS tools use only Node bui
 | the runtime in `vendor-private/libpepflashplayer-32.0.0.363.so` and a built `web/emu.wasm` (`tools/build-wasm.sh`, needs `wasm-opt`) | `node web/flash-smoke.mjs`, `node tools/flash-accelerators-test.mjs`, `node tools/bench-flash-lir.mjs`, `node tools/swf-batch.mjs` |
 | podman (the i386 container) | `rootfs/build.sh`, `tools/build-guest.sh`, `tools/build-progs.sh`, `tools/difftest.sh`, `node web/pepper-test.mjs`, `tools/build-helper.sh` (the `.deb`) |
 | Chrome plus `node tools/build-extension.mjs` | `node tools/ext-test.mjs` (pass `--bundled`, see below) |
+| Firefox 140+, [geckodriver](https://github.com/mozilla/geckodriver/releases) and `node tools/build-extension.mjs --firefox` | `node tools/firefox-test.mjs --geckodriver <path>` (see `docs/DEBUGGING.md`) |
 | Haxe | rebuilding `tests/swf/*.swf` from `tests/swf-src/*.hx` (`haxe -cp tests/swf-src -main <Class> -swf tests/swf/<name>.swf -swf-version 11.2`) |
 
 After **any** Rust change, rebuild `web/emu.wasm` (`sh tools/build-wasm.sh`) before running a Flash test: the JS side loads the built file, not the source.

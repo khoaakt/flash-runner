@@ -1,5 +1,6 @@
 // Assemble the unpacked Chrome extension into dist/extension (load it from chrome://extensions → Load unpacked).
-//   node tools/build-extension.mjs [--zip]
+//   node tools/build-extension.mjs [--zip] [--firefox]
+//   --firefox also writes dist/firefox: the same extension with the manifest changes Firefox needs (tools/firefox/manifest-overlay.json, tools/firefox/overlay.mjs).
 // Prerequisites: tools/build-wasm.sh, rootfs/build.sh, tools/build-guest.sh.
 import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -101,9 +102,29 @@ Bundled third-party components
 `);
 const size = (p) => { let t = 0; const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const f = join(d, e.name); e.isDirectory() ? walk(f) : (t += statSync(f).size); } }; walk(p); return t; };
 console.log(`built ${out}  (${(size(out) / 1048576).toFixed(1)} MiB)`);
+// Zip a directory's contents: `zip` where it exists, otherwise tar's zip writer (Windows ships bsdtar).
+// On Windows the tar on PATH may be GNU tar (Git Bash), which cannot write zip: use the system's bsdtar.
+const TAR = process.platform === 'win32' ? join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe') : 'tar';
+function makeZip(dir, file) {
+  rmSync(file, { force: true });
+  try { execFileSync('zip', ['-qr', file, '.'], { cwd: dir }); } catch (e) { if (e.code !== 'ENOENT') throw e; execFileSync(TAR, ['--format', 'zip', '-cf', file, '-C', dir, ...readdirSync(dir)]); }
+}
 if (process.argv.includes('--zip')) {
   const zip = join(root, 'dist', 'flash-runner-extension.zip');
-  rmSync(zip, { force: true });
-  execFileSync('zip', ['-qr', zip, '.'], { cwd: out });
+  makeZip(out, zip);
   console.log('zip:', zip);
+}
+
+if (process.argv.includes('--firefox')) {
+  const ffOut = process.env.FIREFOX_DIR ? resolve(process.env.FIREFOX_DIR) : join(root, 'dist', 'firefox');
+  rmSync(ffOut, { recursive: true, force: true });
+  cpSync(out, ffOut, { recursive: true });
+  const { firefoxManifest, gecko } = await import('./firefox/overlay.mjs');
+  writeFileSync(join(ffOut, 'manifest.json'), JSON.stringify(firefoxManifest(JSON.parse(readFileSync(join(ffOut, 'manifest.json'), 'utf8'))), null, 2) + '\n');
+  console.log(`built ${ffOut}  (Firefox ${gecko.strict_min_version}+, add-on id ${gecko.id})`);
+  if (process.argv.includes('--zip')) {
+    const xpi = join(root, 'dist', 'flash-runner-firefox.xpi');
+    makeZip(ffOut, xpi);
+    console.log('xpi (unsigned):', xpi);
+  }
 }

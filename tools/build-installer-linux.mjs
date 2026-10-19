@@ -34,6 +34,7 @@ const CRX = '/opt/flash-runner/flash-runner.crx';
 const EXTERNAL = ['opt/google/chrome/extensions', 'usr/share/google-chrome/extensions', 'usr/share/microsoft-edge/extensions', 'usr/share/chromium/extensions'];
 // system-wide native messaging directories, the same ones the standalone helper package uses
 const NATIVE = ['etc/opt/chrome/native-messaging-hosts', 'etc/chromium/native-messaging-hosts', 'etc/opt/edge/native-messaging-hosts', 'etc/brave/native-messaging-hosts'];
+const NATIVE_FIREFOX = 'usr/lib/mozilla/native-messaging-hosts';   // Firefox reads allowed_extensions, not allowed_origins: its own manifest
 
 const work = mkdtempSync(join(root, 'dist', '.deb-work-'));   // under the repo: podman can mount it
 try {
@@ -52,6 +53,7 @@ try {
     put(HELPER.slice(1), readFileSync(join(root, helper)), 0o755);
     const nativeManifest = execFileSync(cli, ['manifest', HELPER]);
     for (const d of NATIVE) put(`${d}/com.flashrunner.sockets.json`, nativeManifest);
+    put(`${NATIVE_FIREFOX}/com.flashrunner.sockets.json`, execFileSync(cli, ['manifest', HELPER, '--firefox']));
     put('usr/share/doc/flash-runner/README', fill(readFileSync(join(res, 'README'), 'utf8')));
     put('usr/share/doc/flash-runner/copyright', notice);
     put('DEBIAN/postinst', fill(readFileSync(join(res, 'postinst'), 'utf8')), 0o755);

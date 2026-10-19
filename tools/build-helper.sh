@@ -27,16 +27,21 @@ for d in "Library/Google/Chrome/NativeMessagingHosts" "Library/Application Suppo
          "Library/Application Support/BraveSoftware/Brave-Browser/NativeMessagingHosts" "Library/Application Support/Vivaldi/NativeMessagingHosts"; do
   mkdir -p "$R/$d"; "$OUT/flash-helper-darwin" manifest "$BIN" > "$R/$d/com.flashrunner.sockets.json"
 done
+# Firefox reads allowed_extensions, not allowed_origins: its own manifest
+mkdir -p "$R/Library/Application Support/Mozilla/NativeMessagingHosts"
+"$OUT/flash-helper-darwin" manifest "$BIN" --firefox > "$R/Library/Application Support/Mozilla/NativeMessagingHosts/com.flashrunner.sockets.json"
 pkgbuild --quiet --root "$R" --identifier com.flashrunner.helper --version "$VER" --install-location / --ownership recommended "$OUT/FlashHelper.pkg"
 rm -rf "$R"
 
-# Debian package: binary + system-wide manifests (/etc/.../native-messaging-hosts is read for every user)
+# Debian package: binary + system-wide manifests (/etc/.../native-messaging-hosts is read for every user; Firefox reads /usr/lib/mozilla/native-messaging-hosts)
 D="$OUT/debroot"; rm -rf "$D"
 LBIN="/usr/lib/flash-helper/flash-helper"
 mkdir -p "$D/DEBIAN" "$D$(dirname "$LBIN")"; cp "$OUT/flash-helper-linux-amd64" "$D$LBIN"; chmod 755 "$D$LBIN"
 for d in etc/opt/chrome/native-messaging-hosts etc/chromium/native-messaging-hosts etc/opt/edge/native-messaging-hosts etc/brave/native-messaging-hosts; do
   mkdir -p "$D/$d"; "$OUT/flash-helper-darwin" manifest "$LBIN" > "$D/$d/com.flashrunner.sockets.json"
 done
+mkdir -p "$D/usr/lib/mozilla/native-messaging-hosts"
+"$OUT/flash-helper-darwin" manifest "$LBIN" --firefox > "$D/usr/lib/mozilla/native-messaging-hosts/com.flashrunner.sockets.json"
 cat > "$D/DEBIAN/control" <<EOF
 Package: flash-helper
 Version: $VER

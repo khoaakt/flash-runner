@@ -70,7 +70,7 @@ for (const [arch, deb] of Object.entries(debs)) {
   }
   const helper = join(x, 'usr/lib/flash-helper/flash-helper');
   check('the helper is byte-identical to native/out and executable', existsSync(helper) && sha(helper) === sha(join(root, `native/out/flash-helper-linux-${arch}`)) && modeOf('/usr/lib/flash-helper/flash-helper') === '-rwxr-xr-x');
-  const natives = ['etc/opt/chrome/native-messaging-hosts', 'etc/chromium/native-messaging-hosts', 'etc/opt/edge/native-messaging-hosts', 'etc/brave/native-messaging-hosts'].map((d) => join(x, d, 'com.flashrunner.sockets.json'));
+  const natives = ['etc/opt/chrome/native-messaging-hosts', 'etc/chromium/native-messaging-hosts', 'etc/opt/edge/native-messaging-hosts', 'etc/brave/native-messaging-hosts', 'usr/lib/mozilla/native-messaging-hosts'].map((d) => join(x, d, 'com.flashrunner.sockets.json'));
   check('the helper is registered for Chrome, Chromium, Edge and Brave and allows only this extension', natives.every((f) => { if (!existsSync(f)) return false; const m = JSON.parse(readFileSync(f, 'utf8')); return m.name === 'com.flashrunner.sockets' && m.type === 'stdio' && m.path === '/usr/lib/flash-helper/flash-helper' && JSON.stringify(m.allowed_origins) === JSON.stringify([`chrome-extension://${id}/`]); }), natives.filter((f) => !existsSync(f)).join(', '));
   check('README and copyright (with the Adobe notice) are installed', existsSync(join(x, 'usr/share/doc/flash-runner/README')) && /Adobe/.test(readFileSync(join(x, 'usr/share/doc/flash-runner/copyright'), 'utf8')) && !/@[A-Z]+@/.test(readFileSync(join(x, 'usr/share/doc/flash-runner/README'), 'utf8')));
   const all = walk(x);
@@ -78,7 +78,7 @@ for (const [arch, deb] of Object.entries(debs)) {
 
   // install, remove, purge
   const ids = ['opt/google/chrome/extensions', 'usr/share/google-chrome/extensions', 'usr/share/microsoft-edge/extensions', 'usr/share/chromium/extensions'].map((d) => `/${d}/${id}.json`).join(' ');
-  const natives2 = ['etc/opt/chrome', 'etc/chromium', 'etc/opt/edge', 'etc/brave'].map((d) => `/${d}/native-messaging-hosts/com.flashrunner.sockets.json`).join(' ');
+  const natives2 = ['etc/opt/chrome', 'etc/chromium', 'etc/opt/edge', 'etc/brave', 'usr/lib/mozilla'].map((d) => `/${d}/native-messaging-hosts/com.flashrunner.sockets.json`).join(' ');
   const standalone = arch === 'amd64' ? `dpkg -i /n/flash-helper_amd64.deb >/dev/null && dpkg -s flash-helper | grep -q 'Status: install ok installed' && echo standalone-helper-installed;` : '';
   const run = podman(platform, image, [`${dist}:/d:ro`, `${join(root, 'native/out')}:/n:ro`], `set -e; ${standalone}
     dpkg -i /d/${deb} 2>&1 | grep -E 'Removing|Unpacking flash-runner|Setting up flash-runner|installed|Restart' || true

@@ -34,6 +34,9 @@ Running real movies needs a Flash runtime you are entitled to use, placed in `ve
 `web/emu.wasm` (`tools/build-wasm.sh`) and the guest userland (`rootfs/build.sh`, `tools/build-guest.sh`; both need podman). The README has the
 full sequence, and [AGENTS.md](AGENTS.md) lists which command needs what. Please say in your pull request which of these you could run.
 
+**Firefox.** `node tools/build-extension.mjs --firefox` also writes `dist/firefox`; `node tools/firefox-manifest-test.mjs` checks its manifest with no browser, and `tools/firefox-test.mjs` drives a real Firefox
+(needs geckodriver, see `docs/DEBUGGING.md`). The socket helper has a separate manifest for Firefox: change both when you change one.
+
 **Windows.** Use Git Bash for the `.sh` scripts and put `cargo`, Go, Node, Python 3 and `podman` on `PATH`. The scripts call `docker`, so give podman a
 `docker` alias or shim; `podman machine init && podman machine start` first. `git config core.fileMode false` stops the lost executable bit of
 the checked-out scripts from showing up as changes. `--zip` of `tools/build-extension.mjs` needs a `zip` command (otherwise

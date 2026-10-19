@@ -1,8 +1,8 @@
 // Drives the socket helper the way Chrome does (native messaging framing on stdin/stdout) against an echo server, without a browser.
 //   node native/helper-test.mjs [path/to/flash-helper]        (default: native/out/flash-helper-<this platform>)
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import net from 'node:net';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,10 +19,10 @@ const echo = net.createServer((c) => { conns.add(c); c.on('close', () => conns.d
 await new Promise((r) => echo.listen(0, '127.0.0.1', r));
 const echoPort = echo.address().port;
 
-function start(cfg) {
+function start(cfg, args = [ORIGIN]) {
   const dir = mkdtempSync(join(tmpdir(), 'flash-helper-test-')), cfgFile = join(dir, 'sockets.json');
   writeFileSync(cfgFile, JSON.stringify(cfg));
-  const p = spawn(bin, [ORIGIN], { env: { ...process.env, FLASHRUNNER_SOCKETS_CONFIG: cfgFile }, stdio: ['pipe', 'pipe', 'inherit'] });
+  const p = spawn(bin, args, { env: { ...process.env, FLASHRUNNER_SOCKETS_CONFIG: cfgFile }, stdio: ['pipe', 'pipe', 'inherit'] });
   const waiters = [], events = [];
   let buf = Buffer.alloc(0);
   p.stdout.on('data', (d) => {
@@ -94,5 +94,20 @@ h2.send({ t: 'connect', rid: 2, host: 'example.org', port: 80 });
 const den = await h2.wait((m) => m.rid === 2);
 check('host outside allowHosts refused', !den.ok && den.code === 'EDENIED' && /not allowed/.test(den.message), JSON.stringify(den));
 h2.p.stdin.end();
+// Firefox starts a native host with <path of the host manifest> <add-on id> and enforces allowed_extensions itself
+const FF_ID = JSON.parse(readFileSync(join(root, 'tools/firefox/manifest-overlay.json'), 'utf8')).set.browser_specific_settings.gecko.id;
+// each browser family gets its own manifest: Firefox's schema rejects the Chromium key
+const mf = JSON.parse(execFileSync(bin, ['manifest', '/x/flash-helper'], { encoding: 'utf8' }));
+check('Chromium manifest names the extension origin and nothing else', mf.allowed_origins?.[0] === ORIGIN && mf.allowed_origins.length === 1 && !('allowed_extensions' in mf), JSON.stringify(mf));
+const mff = JSON.parse(execFileSync(bin, ['manifest', '/x/flash-helper', '--firefox'], { encoding: 'utf8' }));
+check('Firefox manifest names the add-on id of the build overlay and nothing else', mff.allowed_extensions?.[0] === FF_ID && mff.allowed_extensions.length === 1 && !('allowed_origins' in mff) && mff.type === 'stdio' && mff.name === mf.name, JSON.stringify(mff));
+const ff = start({}, [join(tmpdir(), 'com.flashrunner.sockets.json'), FF_ID]);
+ff.send({ t: 'hello', rid: 1 });
+const ffHello = await ff.wait((m) => m.rid === 1);
+check('hello when started the way Firefox starts it', ffHello.ok && ffHello.version === 2, JSON.stringify(ffHello));
+ff.p.stdin.end();
+const stranger = spawnSync(bin, [join(tmpdir(), 'com.flashrunner.sockets.json'), 'someone-else@example.com'], { input: '', timeout: 5000 });
+check('an unknown add-on id does not start the helper', stranger.status === 2, 'exit ' + stranger.status);
+
 console.log(failed ? `${failed} FAILED` : 'all ok');
 process.exit(failed ? 1 : 0);

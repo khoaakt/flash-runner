@@ -60,6 +60,14 @@ it (`lir_retired_for_refusing=` in `JIT_REPORT_FULL=1`); the native method is th
 workload now measures **0.94x**. A method that refuses only some of the time is retired once its total refusals reach
 the limit, losing its speedup afterwards; the limit is a total, not a ratio (per-region completions are not tracked).
 
+## Firefox
+
+The extension builds for Firefox with `node tools/build-extension.mjs --firefox` (details in [DISTRIBUTION.md](DISTRIBUTION.md#firefox)). Measured with `tools/firefox-test.mjs` on Windows, Firefox 157.0.1,
+geckodriver 0.37.1 (temporary add-on, headless): the add-on installs and gets the all-sites host permission; the player replaces the `<embed>`; the Flash runtime initialises and renders
+`compat.swf` (`bitmap_ms=83` on one run, `urlloader`, sound channel and Shared Objects report ok); typing into an input TextField works (`input.swf`); Referer and Origin of the movie's
+requests are those of the embedding page (the rewrite rule matches the extension's host, a per-install UUID in Firefox); the socket helper answers over Firefox native messaging.
+The presenter is the 2D one (no WebGPU adapter in this headless run). Not checked: Stage3D, audio output, macOS or Linux, Firefox ESR, a signed install, performance against Chrome.
+
 ## Debug log setting (extension)
 
 `log` (default `false`) in `extension/options/runtime-store.js`, switch "Debug log" under Troubleshooting in the options page

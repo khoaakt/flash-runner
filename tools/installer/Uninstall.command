@@ -11,7 +11,7 @@ fi
 # the browsers' system-wide native messaging directories that FlashHelper.pkg registers the helper in (tools/build-helper.sh);
 # the ._ files are AppleDouble leftovers that package carries
 for d in "Library/Google/Chrome" "Library/Application Support/Chromium" "Library/Microsoft/Edge" \
-         "Library/Application Support/BraveSoftware/Brave-Browser" "Library/Application Support/Vivaldi"; do
+         "Library/Application Support/BraveSoftware/Brave-Browser" "Library/Application Support/Vivaldi" "Library/Application Support/Mozilla"; do
   rm -f "$root/$d/NativeMessagingHosts/com.flashrunner.sockets.json" "$root/$d/NativeMessagingHosts/._com.flashrunner.sockets.json"
 done
 rm -rf "$root/Library/Application Support/FlashRunnerHelper"

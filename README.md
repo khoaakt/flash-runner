@@ -31,7 +31,7 @@ stops and `pepper.js` does it with the real browser APIs. Details: [docs/ARCHITE
 - **A Flash Player plugin you are allowed to use:** `libpepflashplayer.so`, 32-bit Linux PPAPI. Put it in `vendor-private/` (git-ignored; see
   [vendor-private/README.md](vendor-private/README.md) for the file names). Tested with 32.0.0.363 (the last build before Adobe's end-of-life
   block, preferred) and 26.0.0.151. Builds from 32.0.0.465 on show Adobe's "blocked" screen and do not run; this project does not try to bypass that.
-- **Chrome, Chromium or Edge.** WebGPU is used when available, with a 2D fallback.
+- **Chrome, Chromium or Edge, or Firefox 140 or newer.** WebGPU is used when available, with a 2D fallback.
 - **To build:** Rust (with the `wasm32-unknown-unknown` target), Node 24, Go, Python 3, `wasm-opt`, and podman for the 32-bit guest userland.
   On Windows read the notes in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -59,10 +59,17 @@ flowchart LR
 Then in Chrome: `chrome://extensions` -> turn on *Developer mode* -> **Load unpacked** -> pick `dist/extension`. Any page with a Flash
 `<embed>` or `<object>` now plays, `.swf` links open in a viewer, and the toolbar popup can open a local `.swf`.
 
+**Firefox:** run `node tools/build-extension.mjs --firefox` too, then open `about:debugging#/runtime/this-firefox` -> **Load Temporary Add-on** -> pick
+`dist/firefox/manifest.json`. A temporary add-on is gone after a restart, because release Firefox only keeps signed add-ons; see
+[docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#firefox) for the permanent options.
+
 Chrome only accepts an off-store extension from a file on Linux. On Windows and macOS you do *Load unpacked* once; how each platform is packaged
 (and why) is in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md).
 
 ## What works
+
+The same extension code runs in Chrome and Firefox. Firefox was checked on Windows with Firefox 157 (`tools/firefox-test.mjs`): the add-on installs, Flash
+starts, text input, networking and the socket helper work, and drawing uses the 2D presenter. Stage3D and audio are not checked in Firefox yet.
 
 Checked in Chrome with 32.0.0.363 (`tools/ext-test.mjs`, `tests/ext/`):
 

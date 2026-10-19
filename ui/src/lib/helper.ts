@@ -11,7 +11,7 @@ export const HELPER_INSTALLERS: Record<Os, string> = {
 
 export type HelperStatus = { installed: true; version: string } | { installed: false };
 
-/** Asks the helper whether it is installed, through Chrome's native messaging. */
+/** Asks the helper whether it is installed, through the browser's native messaging. */
 export async function readHelperStatus(): Promise<HelperStatus> {
   try {
     const reply = await chrome.runtime.sendNativeMessage('com.flashrunner.sockets', { t: 'hello', rid: 1 });

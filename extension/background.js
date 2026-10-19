@@ -1,5 +1,7 @@
-// Service worker: keeps the "open .swf URLs in the player" redirect rule in sync with the settings.
+// Background script (a service worker in Chrome, an event page in Firefox): keeps the "open .swf URLs in the player" redirect rule in sync with the settings.
 const VIEWER = chrome.runtime.getURL('player/viewer.html');
+// Requests the extension makes carry its own host as initiator: the extension id in Chrome, a per-install UUID in Firefox (runtime.id is the add-on id there).
+const EXT_HOST = new URL(chrome.runtime.getURL('')).hostname;
 
 async function syncRules() {
   const { enabled = true, openSwfLinks = true } = await chrome.storage.local.get(['enabled', 'openSwfLinks']);
@@ -11,7 +13,7 @@ async function syncRules() {
       regexFilter: '^(https?://[^#]*\\.swf(?:\\?[^#]*)?)(?:#.*)?$',
       isUrlFilterCaseSensitive: false,
       resourceTypes: ['main_frame', 'sub_frame'],
-      excludedInitiatorDomains: [chrome.runtime.id],
+      excludedInitiatorDomains: [EXT_HOST],
     },
   }] : [];
   await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [1], addRules: rules });
@@ -36,7 +38,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const addRules = url ? [{
     id, priority: 2,
     action: { type: 'modifyHeaders', requestHeaders: [{ header: 'Referer', operation: 'set', value: url }, { header: 'Origin', operation: 'set', value: origin }] },
-    condition: { tabIds: [sender.tab.id], initiatorDomains: [chrome.runtime.id], resourceTypes: ['xmlhttprequest', 'media', 'other'] },
+    condition: { tabIds: [sender.tab.id], initiatorDomains: [EXT_HOST], resourceTypes: ['xmlhttprequest', 'media', 'other'] },
   }] : [];
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id], addRules }).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: String(e) }));
   return true;                                                      // async reply
