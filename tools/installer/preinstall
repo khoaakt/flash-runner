@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs before the extension's files are laid down: clear the previous copy, so a file the new build no longer has does not linger.
+# (The folder is entirely ours; the path is tools/installer/layout.mjs EXTENSION_DIR.)
+rm -rf "/Applications/Flash Runner/extension"
+exit 0

@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>ei</title></head>
+<body style="margin:8px;font:14px system-ui">
+<p id="status">waiting…</p>
+<script>
+  window.calls = [];
+  // called from Flash via ExternalInterface.call("helloFromOpenFL", "Hello from OpenFL")
+  function helloFromOpenFL(msg) { window.calls.push('flash->page:' + msg); document.getElementById('status').textContent = 'page got: ' + msg; return 'ack:' + msg; }
+</script>
+<embed id="movie" name="movie" src="/tests/swf-samples/BrowserExternalInterface.swf" type="application/x-shockwave-flash" width="420" height="80" allowscriptaccess="always">
+<script>
+  // page -> Flash (ExternalInterface.addCallback("helloFromBrowser", ...)): asynchronous in this implementation
+  window.callFlash = async () => {
+    const m = document.getElementById('movie');
+    try { const r = m.helloFromBrowser ? await m.helloFromBrowser('Hello from the page') : 'no helloFromBrowser'; window.calls.push('page->flash result:' + r); }
+    catch (e) { window.calls.push('page->flash error:' + e); }
+  };
+</script>
+</body></html>

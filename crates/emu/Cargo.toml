@@ -1,0 +1,17 @@
+[package]
+name = "emu"
+version = "0.0.1"
+edition = "2021"
+description = "x86-32 emulator and Linux personality that runs the Pepper Flash plugin inside WebAssembly"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+iced-x86 = { version = "1", default-features = false, features = ["std", "decoder", "instr_info", "no_evex", "no_vex", "no_xop", "no_d3now"] }
+
+[dev-dependencies]
+# Native differential testing of the JIT translator: generated wasm is validated and executed by wasmi.
+wasmi = { version = "2", default-features = false, features = ["std", "validate", "stable", "simd"] }

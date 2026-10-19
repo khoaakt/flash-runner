@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ext test page</title></head>
+<body style="margin:12px;font:14px system-ui">
+<p id="info">detecting…</p>
+<!-- 1. plain <embed> with flashvars -->
+<embed id="game1" src="/tests/swf/testsrc.swf" type="application/x-shockwave-flash" width="320" height="240" flashvars="level=3&name=test" allowscriptaccess="always">
+<!-- 2. classic <object> + nested <embed> (swfobject static markup) -->
+<object id="game2" classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000" width="200" height="150">
+  <param name="movie" value="/tests/swf/testsrc.swf"><param name="flashvars" value="x=1">
+  <embed src="/tests/swf/testsrc.swf" width="200" height="150" type="application/x-shockwave-flash">
+</object>
+<div id="host"></div>
+<script>
+  const p = navigator.plugins['Shockwave Flash'];
+  document.getElementById('info').textContent = 'plugin=' + (p ? p.description : 'none') + ' mime=' + !!navigator.mimeTypes['application/x-shockwave-flash'] + ' len=' + navigator.plugins.length;
+  // 3. dynamically injected after load, like swfobject.embedSWF does once it believes Flash is available
+  setTimeout(() => {
+    const o = document.createElement('object'); o.type = 'application/x-shockwave-flash'; o.data = '/tests/swf/testsrc.swf'; o.width = 160; o.height = 120; o.id = 'game3';
+    document.getElementById('host').append(o);
+  }, 400);
+</script>
+</body></html>

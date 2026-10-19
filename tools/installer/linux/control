@@ -1,0 +1,16 @@
+Package: flash-runner
+Version: @VERSION@
+Section: web
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @SIZE@
+Maintainer: flash-runner <noreply@localhost>
+Conflicts: flash-helper
+Replaces: flash-helper
+Provides: flash-helper
+Description: flash-runner, Flash for Chrome, Chromium and Edge, with the online game helper
+ Installs the extension, which Chrome, Chromium and Edge add by themselves the
+ next time they start, and the helper that lets games open the raw TCP sockets
+ a browser cannot. It replaces the standalone flash-helper package.
+ Contains Adobe Flash Player, proprietary software of Adobe Inc. / HARMAN,
+ included unmodified for personal use; see /usr/share/doc/flash-runner/copyright.

@@ -1,0 +1,37 @@
+# Never commit: the Flash runtime you supply, signing keys, credentials
+/vendor-private/*
+!/vendor-private/README.md
+*.pem
+*.key
+*.crx
+.env
+.env.*
+
+# Build output (dist also holds the runtime you supplied, bundled into the extension)
+/target
+/dist/
+/guest/out/
+/native/out/
+/rootfs/out/
+/rootfs/*.img
+/tests/out/
+/web/dist/
+/web/emu.wasm
+/web/runtime-aot/
+/tools/dis/target/
+node_modules/
+native/flash-runner-sockets
+
+# OpenFL sample games: fetched and built by tools/build-openfl-samples.sh, never vendored (see that script)
+/tests/openfl/
+/tests/swf-samples/
+.haxelib-global/
+
+# Local scratch
+custom*.png
+*.core
+*.swp
+.DS_Store
+__pycache__/
+*.pyc
+.claude/

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GLES2 selftest</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --ok:#0a7d33; --bad:#c62828; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --mut:#999; --ok:#4cd07d; --bad:#ff6b6b; } }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui,sans-serif; }
+  main { max-width: 900px; margin: 0 auto; } h1 { font-size: 18px; margin: 0 0 8px; }
+  pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace,monospace; } .ok { color: var(--ok); } .bad { color: var(--bad); }
+</style></head>
+<body><main>
+<h1>PPB_OpenGLES2 / PPB_Graphics3D self test (WebGL2, no emulator)</h1>
+<p>Query: <code>?base=0,1,2</code> lists the guest-memory base offsets to run (non-zero bases force the unaligned copy paths).</p>
+<pre id="out">running…</pre>
+</main>
+<script type="module">
+  import { runSelfTest } from './ppb-gles2-selftest.js';
+  const bases = (new URLSearchParams(location.search).get('base') || '0,1,2').split(',').map(Number);
+  const lines = []; let failures = 0;
+  window.__results = [];
+  for (const base of bases) {
+    let r;
+    try { r = await runSelfTest({ base }); } catch (e) { r = { base, total: 0, failed: [{ name: 'EXCEPTION', detail: String(e && e.stack || e) }], uncalled: [], logs: [], results: [], entryPoints: 0 }; }
+    window.__results.push({ base, total: r.total, failed: r.failed, uncalled: r.uncalled, logs: r.logs }); window.__info = r.info;
+    failures += r.failed.length;
+    lines.push(`base=${base}: ${r.total - r.failed.length}/${r.total} checks passed; entry points exercised: ${r.entryPoints - r.uncalled.length}/${r.entryPoints}`);
+    for (const f of r.failed) lines.push('  FAIL ' + f.name + '  ' + f.detail);
+    if (r.uncalled.length) lines.push('  not exercised: ' + r.uncalled.join(', '));
+    if (r.logs.length) lines.push('  host log: ' + r.logs.slice(0, 5).join(' | '));
+  }
+  lines.push(failures ? `FAILED (${failures})` : 'ALL PASSED');
+  document.getElementById('out').innerHTML = lines.map((l) => `<span class="${/FAIL/.test(l) ? 'bad' : /PASSED/.test(l) ? 'ok' : ''}">${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`).join('\n');
+  window.__failures = failures; window.__done = true;
+</script>
+</body></html>

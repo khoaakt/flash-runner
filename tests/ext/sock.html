@@ -1,0 +1,5 @@
+<!doctype html><html><head><meta charset="utf-8"><title>sock</title></head>
+<body style="margin:8px"><script>
+  const port = new URLSearchParams(location.search).get('sock') || '0';
+  document.write('<embed src="/tests/swf/sock.swf" type="application/x-shockwave-flash" width="480" height="140" flashvars="host=127.0.0.1&port=' + port + '">');
+</script></body></html>

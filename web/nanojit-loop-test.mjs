@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { encodeLoopCapture, lowerCapturedLoop, loopCaptureOpcode } from './nanojit-loop.js';
+const records = Array.from({ length: 63 }, (_, i) => ({ address: 0x1000 + 32 * i, opcode: i === 0 ? 0 : 57, bytes: [0, 0, 0, i === 0 ? 0 : 57] }));
+const capture = { records, code: 0x8000, nativePrefix: [0x55, 0xc3] };
+const encoded = encodeLoopCapture(capture);
+assert.ok(encoded); assert.equal(new DataView(encoded.buffer).getUint32(0, true), 63);
+assert.equal(loopCaptureOpcode(192, 30), true); assert.equal(loopCaptureOpcode(192, 96), false);
+assert.equal(encodeLoopCapture({ records: records.slice(1) }), null);
+const overlap = structuredClone(capture); overlap.records[1].address = overlap.records[0].address;
+assert.equal(encodeLoopCapture(overlap), null);
+const badByte = structuredClone(capture); badByte.records[1].bytes[0] = 256;
+assert.equal(encodeLoopCapture(badByte), null);
+assert.equal(lowerCapturedLoop({ installCapturedLoop() { throw new Error('complete stream proof rejected'); } }, capture).reason, 'complete stream proof rejected');
+console.log('PASS counted-loop capture encoding bounds and independent verifier rejection');

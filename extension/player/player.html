@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  #root { position: absolute; inset: 0; }
+  .msg { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+         font: 14px/1.4 system-ui, sans-serif; color: #e8e8e8; background: #202124; text-align: center; padding: 12px; box-sizing: border-box; }
+  .msg b { font-size: 16px; } .msg small { color: #9aa0a6; max-width: 420px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 0; background: #1a73e8; color: #fff; cursor: pointer; }
+  button.play { width: 72px; height: 72px; border-radius: 50%; font-size: 28px; padding: 0; }
+</style></head>
+<body>
+<div id="root"></div>
+
+<script type="module" src="player.js"></script>
+</body></html>

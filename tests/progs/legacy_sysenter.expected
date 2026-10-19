@@ -1,0 +1,4 @@
+sysenter getpid: match=yes nonzero=yes
+agrees with int80: yes
+sysenter getuid: yes
+sysenter geteuid: yes

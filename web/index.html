@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>flash-runner</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --mut:#999; } }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; } p { color: var(--mut); margin: 4px 0 16px; }
+  pre { background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 8px; border-radius: 6px; max-height: 220px; overflow:auto; font-size: 12px; }
+</style></head>
+<body><main>
+<h1>flash-runner</h1>
+<p>Unmodified Flash runtime in WebAssembly. <code>?plugin=fake</code> uses the bundled test plugin; <code>?swf=URL</code> picks the movie.</p>
+<embed id="movie" type="application/x-shockwave-flash" width="640" height="400">
+<pre id="log"></pre>
+</main>
+<script>window.__flashNoAuto = true;</script>
+<script type="module">
+  import { FlashPlayer } from './loader.js';
+  const q = new URLSearchParams(location.search);
+  const el = document.getElementById('movie');
+  const swf = q.get('swf'); if (swf) el.setAttribute('src', swf);
+  const log = document.getElementById('log');
+  const plugin = q.get('plugin') === 'fake' ? '/assets/fakeplug.so' : '/vendor/plugin.so';
+  window.player = new FlashPlayer(el, { plugin, force2d: q.has('force2d'), sse2: q.has('nosse') ? false : true, trace: q.has('trace'), gpu3d: q.has('gpu3d'),
+    onLog: (s) => { log.textContent += s + '\n'; log.scrollTop = log.scrollHeight; },
+    onMessage: (m) => { log.textContent += 'plugin: ' + m + '\n'; } });
+  window.player.start();
+</script>
+</body></html>

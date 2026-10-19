@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"><title>ei cross default</title></head>
+<body style="margin:8px;font:14px system-ui">
+<p id="status">waiting…</p>
+<pre id="log" style="font:12px ui-monospace,monospace"></pre>
+<script>
+  window.calls = [];
+  const note = (s) => { calls.push(s); document.getElementById('log').textContent = calls.join('\n'); };
+  // Flash -> page: ExternalInterface.call("pageEcho", "hello", 42, true, {a:1,b:[1,2]})
+  function pageEcho(s, n, b, o) { note('flash->page pageEcho ' + JSON.stringify([s, n, b, o])); return { ok: true, echoed: s, list: [1, 2, 3] }; }
+</script>
+<script>document.write('<embed id="movie" name="movie" src="http://localhost:'+location.port+'/tests/swf/ei.swf" type="application/x-shockwave-flash" width="400" height="150" >')</script>
+<script>
+  // page -> Flash (asynchronous in this implementation, so each call returns a Promise)
+  window.pageToFlash = async () => {
+    const m = document.getElementById('movie');
+    try {
+      note('page->flash echo = ' + JSON.stringify(await m.echo('hi from page')));
+      note('page->flash sum = ' + JSON.stringify(await m.sum(2, 40.5)));
+      note('page->flash obj = ' + JSON.stringify(await m.obj({ a: 1, b: ['x', 2] })));
+      note('typeof nodeName = ' + m.nodeName + ', then=' + typeof m.then);
+    } catch (e) { note('page->flash ERROR ' + e); }
+    window.done = true;
+  };
+  setTimeout(() => window.pageToFlash(), 12000);
+</script>
+</body></html>

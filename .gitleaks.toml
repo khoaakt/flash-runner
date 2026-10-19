@@ -1,0 +1,8 @@
+# gitleaks configuration (https://github.com/gitleaks/gitleaks); used by `gitleaks dir .` / `gitleaks git .`
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The `key` in extension/manifest.json is the extension's PUBLIC key (a base64 SubjectPublicKeyInfo for RSA-2048, always starting like this): it fixes the extension ID the socket helper allows. A private key (PKCS#8, starting `MIIEv`) is not exempt; the signing key itself is vendor-private/extension-key.pem, which is git-ignored."
+regexTarget = "secret"
+regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA''']

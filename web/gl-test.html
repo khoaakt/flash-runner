@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GL bridge test</title>
+<style>
+  :root { color-scheme: light dark; --bg:#fff; --fg:#111; --mut:#666; --ok:#0a7d33; --bad:#c62828; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --mut:#999; --ok:#4cd07d; --bad:#ff6b6b; } }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui,sans-serif; }
+  main { max-width: 900px; margin: 0 auto; } h1 { font-size: 18px; margin: 0 0 8px; } p { color: var(--mut); margin: 4px 0 12px; }
+  pre { white-space: pre-wrap; font: 12px/1.4 ui-monospace,monospace; max-height: 420px; overflow: auto; } .ok { color: var(--ok); } .bad { color: var(--bad); }
+</style></head>
+<body><main>
+<h1>PPB_Graphics3D / PPB_OpenGLES2 through the emulator</h1>
+<p><code>/assets/fakegl.so</code> (guest/test-plugin/fakegl.c) runs in the emulated CPU; its GL calls are served by WebGL2 and presented through the Worker's Presenter.
+Query: <code>?force2d</code> (2D-canvas presenter instead of WebGPU), <code>?trace</code>, <code>?sse2</code>.</p>
+<embed id="movie" type="application/x-shockwave-flash" width="64" height="64">
+<pre id="out">starting…</pre>
+</main>
+<script>window.__flashNoAuto = true;</script>
+<script type="module">
+  import { FlashPlayer } from './loader.js';
+  const q = new URLSearchParams(location.search);
+  const msgs = window.__results = [], logs = window.__logs = [], checks = [];
+  const check = (name, ok, detail = '') => checks.push({ name, ok: !!ok, detail: String(detail) });
+  const out = document.getElementById('out');
+  let finished = false, presenterKind = '?';
+
+  const player = window.player = new FlashPlayer(document.getElementById('movie'), {
+    plugin: '/assets/fakegl.so', audio: false, gpu3d: true, force2d: q.has('force2d'), sse2: q.has('sse2'), trace: q.has('trace'),
+    onLog: (s) => { logs.push(s); },
+    onReady: (m) => { presenterKind = m.presenter; },
+    onMessage: (m) => { msgs.push(m); out.textContent = msgs.join('\n'); if (m === 'gl-test done') setTimeout(finish, 100); },
+    onError: (m) => { check('worker error', false, m.message); finish(); },
+  });
+  player.start();
+  setTimeout(() => { if (!finished) { check('finished within 90 s', false, 'timeout'); finish(); } }, 90000);
+
+  const find = (prefix) => msgs.find((m) => m.startsWith(prefix));
+  const kv = (prefix) => { const m = find(prefix); const o = {}; if (m) for (const [, k, v] of m.matchAll(/(\w+)=(\S*)/g)) o[k] = v; return o; };
+
+  async function finish() {
+    if (finished) return; finished = true;
+    const g = kv('g3d create'); check('Graphics3D::Create + IsGraphics3D', g.ok === '1' && g.valid === '1', find('g3d create'));
+    const a = kv('attribs'); check('GetAttribs reflects the attrib list', a.r === '0' && a.alpha === '8' && a.depth === '24' && a.stencil === '8' && a.w === '64' && a.h === '64', find('attribs'));
+    check('BindGraphics accepted a Graphics3D', find('bind=') === 'bind=1', find('bind='));
+    check('GL_VERSION is OpenGL ES 2.0', /^version=OpenGL ES 2\.0/.test(find('version=') || ''), find('version='));
+    check('GL_SHADING_LANGUAGE_VERSION is ESSL 1.0', /^glsl=OpenGL ES GLSL ES 1\.0/.test(find('glsl=') || ''), find('glsl='));
+    const e = kv('ext '); check('GL_EXTENSIONS lists the Flash-relevant names', ['derivatives', 'bgra', 'packed_ds', 'instanced', 'occlusion', 'vao', 'map_sub'].every((k) => e[k] === '1') && +e.len > 200, find('ext '));
+    check('GetIntegerv(MAX_TEXTURE_SIZE)', find('maxtex_ok=') === 'maxtex_ok=1');
+    check('GetIntegerv(VIEWPORT) = 0,0,64,64', find('viewport=') === 'viewport=0,0,64,64', find('viewport='));
+    const b = kv('badshader'); check('failing shader: COMPILE_STATUS=0 and the info log names the identifier', b.status === '0' && b.log_has_identifier === '1', find('badshader'));
+    const p = kv('program'); check('program compiles, links, uniform locations resolve', p.vs === '1' && p.fs === '1' && p.linked === '1' && p.locs_ok === '1', find('program'));
+    const u = kv('active uniforms'); check('ACTIVE_UNIFORMS / ACTIVE_ATTRIBUTES / GetActiveAttrib', u.uniforms === '3' && u.attribs === '3' && +u.first_attrib_len > 0 && u.type_ok === '1', find('active uniforms'));
+    check('textured quad (DrawElements): bottom-left texel red', find('quad bl=') === 'quad bl=255,0,0,255', find('quad bl='));
+    check('textured quad: bottom-right texel green', find('quad br=') === 'quad br=0,255,0,255', find('quad br='));
+    check('textured quad: top-left texel blue', find('quad tl=') === 'quad tl=0,0,255,255', find('quad tl='));
+    check('textured quad: top-right texel white', find('quad tr=') === 'quad tr=255,255,255,255', find('quad tr='));
+    check('triangle (DrawArrays) from a VBO is yellow in the middle', find('tri center=') === 'tri center=255,255,0,255', find('tri center='));
+    check('FBO complete and ReadPixels returns the cleared green', find('fbo status=') === 'fbo status=8cd5 px=0,255,0,255', find('fbo status='));
+    check('GetError: clean, first error INVALID_ENUM, then cleared', find('err_before=') === 'err_before=0' && find('err_first=') === 'err_first=500' && find('err_cleared=') === 'err_cleared=0', [find('err_before='), find('err_first='), find('err_cleared=')].join(' '));
+    check('Graphics3D::GetError / ResizeBuffers', find('g3d_error=') === 'g3d_error=0 resize=0', find('g3d_error='));
+    const sw = msgs.filter((m) => m.startsWith('swap done'));
+    check('three SwapBuffers callbacks completed with PP_OK', sw.length === 3 && sw.every((m) => /result=0$/.test(m)), sw.join(' | '));
+    check('shared context (own 32x32 surface) renders the shared program/buffers/texture', find('shared bl=') === 'shared bl=255,0,0,255' && find('shared br=') === 'shared br=0,255,0,255' && find('shared swap result=') === 'shared swap result=0', [find('shared create'), find('shared bl='), find('shared br='), find('shared swap')].join(' | '));
+    check('GL + blocking SwapBuffers from a second guest thread', find('thread quad bl=') === 'thread quad bl=255,0,0,255' && find('thread swap result=') === 'thread swap result=0', [find('thread create'), find('thread quad bl='), find('thread swap result=')].join(' | '));
+    check('plugin finished', msgs.includes('gl-test done'));
+
+    // what the Worker's Presenter put on the page canvas (the canvas itself is owned by the worker)
+    let snap = null;
+    try { snap = await player.snapshot(); } catch (err) { check('snapshot', false, err); }
+    if (snap) {
+      window.__snapshot = { w: snap.w, h: snap.h };
+      const px = (x, y) => Array.from(snap.data.subarray((y * snap.w + x) * 4, (y * snap.w + x) * 4 + 4));
+      const near = (got, want, tol = 3) => got.every((v, i) => Math.abs(v - want[i]) <= tol);
+      check('page canvas is 64x64', snap.w === 64 && snap.h === 64, snap.w + 'x' + snap.h);
+      for (const [name, x, y, want] of [['red (bottom-left)', 16, 47, [255, 0, 0, 255]], ['green (bottom-right)', 48, 47, [0, 255, 0, 255]], ['blue (top-left)', 16, 15, [0, 0, 255, 255]], ['white (top-right)', 48, 15, [255, 255, 255, 255]], ['yellow triangle', 32, 35, [255, 255, 0, 255]]]) {
+        check(`presented ${presenterKind} canvas pixel: ${name}`, near(px(x, y), want), `(${x},${y}) = ${px(x, y)}`);
+      }
+    }
+    const bad = checks.filter((c) => !c.ok);
+    window.__checks = checks; window.__failures = bad.length;
+    out.innerHTML = [`presenter: ${presenterKind}`, ...checks.map((c) => `<span class="${c.ok ? 'ok' : 'bad'}">${c.ok ? 'PASS' : 'FAIL'} ${c.name}${c.ok ? '' : '  -- ' + c.detail}</span>`),
+      bad.length ? `<span class="bad">FAILED (${bad.length})</span>` : '<span class="ok">ALL PASSED</span>', '', 'plugin messages:', ...msgs, '', 'worker log:', ...logs.slice(-30)]
+      .map((l) => (l.startsWith('<span') ? l : l.replace(/&/g, '&amp;').replace(/</g, '&lt;'))).join('\n');
+    window.__done = true;
+  }
+</script>
+</body></html>

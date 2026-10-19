@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Template for tools/build-installer.mjs: @VERSION@, @HELPER_VERSION@ are filled in at build time. -->
+<installer-gui-script minSpecVersion="2">
+    <title>flash-runner</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <options customize="allow" require-scripts="false" rootVolumeOnly="true" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="false" enable_localSystem="true" enable_currentUserHome="false"/>
+    <choices-outline>
+        <line choice="extension"/>
+        <line choice="helper"/>
+    </choices-outline>
+    <choice id="extension" title="Flash runtime extension"
+            description="The extension folder, installed in @EXTENSION_DIR@. Chrome still needs to be told to load it once (the last page of this installer says how)."
+            start_selected="true">
+        <pkg-ref id="com.flashrunner.extension"/>
+    </choice>
+    <choice id="helper" title="Online game helper"
+            description="Lets games that connect to their own servers play online, in Chrome, Edge, Brave, Chromium and Vivaldi. Leave it selected unless you only play offline."
+            start_selected="true">
+        <pkg-ref id="com.flashrunner.helper"/>
+    </choice>
+    <pkg-ref id="com.flashrunner.extension" version="@VERSION@" onConclusion="none">FlashRunnerExtension.pkg</pkg-ref>
+    <pkg-ref id="com.flashrunner.helper" version="@HELPER_VERSION@" onConclusion="none">FlashHelper.pkg</pkg-ref>
+</installer-gui-script>

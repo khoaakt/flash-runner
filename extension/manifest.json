@@ -1,0 +1,81 @@
+{
+  "manifest_version": 3,
+  "name": "flash-runner",
+  "short_name": "flash-runner",
+  "version": "0.1.0",
+  "description": "Play Flash content in Chrome.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "declarativeNetRequest",
+    "clipboardRead",
+    "clipboardWrite",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/inject-main.js",
+        "content/bridge-main.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "player/*",
+        "web/*",
+        "assets/*",
+        "options/runtime-store.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "options_page": "options/options.html",
+  "action": {
+    "default_title": "flash-runner",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArex/6mGdfSYagmHfl1ZZ3OoQZbIn7oAFUti5yNBO4fLu1NrseV+xVNXiyYWzebgH+3xQQw6I845BSvSMrEwY+Wv9Ea29+bsAFqIr09FWeIGCkqfhZ/s6a2s6F45Pg5rm1VezW+ew0HwsT2Tvt68USuPDxljkYDEojI5Ykze1zakIF5nvp9KkkGacI12BjNbDc5Nldbopg1h//pItoL8b4cb15uSPIWaEzQDS9NMk4A5glusWiJ9evyhxfXSH8t8M8UsndlAvPA6gc+ilfItrVQVFhvjr69Kh7kYJYK2RJVvEH0/uFAS9uz3S6GPrnPnaBEAIVLQCerOr87qhg048xQIDAQAB"
+}

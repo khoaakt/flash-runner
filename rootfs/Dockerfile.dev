@@ -1,0 +1,19 @@
+# i386 Debian with a native (i386) toolchain. Used to (1) compile guest test programs
+# and the pepper-host, and (2) act as an execution oracle for differential CPU tests.
+# This must stay glibc/Debian to match the product rootfs (rootfs/build.sh) and the Flash
+# projector: an Alpine/musl variant would compile and execute a different userland than the
+# one the emulator ships, and musl-linked pepper-host/.dyn test binaries would not even load
+# against the glibc-only rootfs.tar. Alpine with the same packages is only ~10% smaller (the
+# weight is gcc/g++, not the libc), so there is nothing to win there either.
+# The LTO compiler/driver (lto1 + lto-dump, ~70 MB, the single largest chunk of gcc) is removed
+# after install: no guest build uses -flto. liblto_plugin.so must stay: Debian's gcc passes
+# -fuse-linker-plugin to ld on every link. The sanitizer libs (~10 MB) are kept for occasional
+# -fsanitize debugging of guest programs.
+FROM docker.io/i386/debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      gcc g++ make binutils libc6-dev xxd file \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/lib/gcc/i686-linux-gnu/*/lto1 \
+             /usr/lib/gcc/i686-linux-gnu/*/lto-wrapper \
+             /usr/bin/*lto-dump*
+WORKDIR /work

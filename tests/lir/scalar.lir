@@ -1,0 +1,8 @@
+# Normalized pure LIR, not a proprietary LIns memory dump.
+params i32 f64
+expected = parami 0
+value = argd 1
+converted = d2i value
+matches = eqi expected converted
+xf matches 7
+reti converted

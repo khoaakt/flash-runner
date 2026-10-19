@@ -1,0 +1,8 @@
+#!/bin/sh
+# Only tells the user what happens next: the browsers pick the extension up from the files this package installed.
+set -e
+if [ "$1" = configure ]; then
+  echo "flash-runner @VERSION@ installed."
+  echo "Restart Chrome, Chromium or Edge: the extension installs itself (see /usr/share/doc/flash-runner/README)."
+fi
+exit 0

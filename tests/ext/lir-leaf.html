@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>Real Flash LIR bridge test</title>
+<div id="container"></div>
+<pre id="status">waiting for Flash self-test</pre>
+<script>
+window.done = false;
+const movie = document.createElement('embed'); movie.id = 'movie';
+movie.src = new URLSearchParams(location.search).has('arithmetic') ? '../swf/lir-arithmetic.swf' : '../swf/lir-leaf.swf';
+if (new URLSearchParams(location.search).has('loops')) movie.src = '../swf/lir-loops.swf';
+if (new URLSearchParams(location.search).has('memory')) movie.src = '../swf/lir-memory.swf';
+movie.type = 'application/x-shockwave-flash'; movie.width = 400; movie.height = 300;
+movie.setAttribute('allowscriptaccess', 'always'); document.getElementById('container').appendChild(movie);
+const timer = setInterval(async () => {
+  const movie = document.getElementById('movie');
+  if (typeof movie?.selfTest !== 'function') return;
+  clearInterval(timer);
+  try { window.result = await movie.selfTest(); }
+  catch (error) { window.result = 'ERROR: ' + error; }
+  document.getElementById('status').textContent = window.result;
+  window.done = true;
+}, 250);
+</script>

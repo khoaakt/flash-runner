@@ -1,0 +1,26 @@
+flash-runner @VERSION@
+
+What this package installed
+  @CRX@
+      the extension, signed with the project key; its ID is @ID@
+  <browser>/extensions/@ID@.json
+      tells the browser to install that file: Chrome (/opt/google/chrome/extensions and /usr/share/google-chrome/extensions),
+      Edge (/usr/share/microsoft-edge/extensions) and Chromium (/usr/share/chromium/extensions)
+  /usr/lib/flash-helper/flash-helper
+      the online game helper, which gives games the raw TCP sockets a browser cannot open; it is registered
+      system-wide for Chrome, Chromium, Edge and Brave (/etc/.../native-messaging-hosts/com.flashrunner.sockets.json)
+      and only this extension's ID may talk to it
+
+Using it
+  Restart the browser. The extension shows up in chrome://extensions (edge://extensions) by itself; on Linux the browser does
+  not ask first. The extension's settings page then shows "Online games: Installed".
+  Brave and Vivaldi have no documented directory for this, so the extension is not added there automatically.
+
+Updating
+  Install the newer package. The JSON carries the new version, and the browser updates the extension the next time it starts.
+
+Removing
+  sudo apt remove flash-runner
+  The JSON files go with it, and the browser removes the extension at its next start.
+  If you remove the extension yourself in chrome://extensions, the browser remembers that and does not install it again.
+  The standalone helper (flash-helper_amd64.deb) installs the same helper without the extension.

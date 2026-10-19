@@ -1,0 +1,38 @@
+name: Bug report
+description: Something does not work or gives a wrong result
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach Adobe/HARMAN files or links to them, and do not paste tokens, session URLs or logs that contain them.
+        Security problems go through the repository's private "Report a vulnerability" form, not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: A minimal movie or input, the page (if public), and the steps. For the emulator: the program and the command.
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Flash runtime build
+      description: For example 32.0.0.363 (the extension's settings page shows it)
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      description: For example Chrome 155 on macOS 15, or Chromium on Debian 12
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: Turn on Debug log in the extension's settings and paste the lines starting with `[flash]`.
+      render: text

@@ -1,0 +1,37 @@
+lfs 12345678
+les 9abcdef0
+lds fedcba98
+lss 00001111
+lgs deadbeef
+tls ok 1
+lar 0000 -> deadbeef zf=0
+lsl 0000 -> deadbeef zf=0
+lar 0008 -> deadbeef zf=0
+lsl 0008 -> deadbeef zf=0
+lar 0010 -> deadbeef zf=0
+lsl 0010 -> deadbeef zf=0
+lar 0023 -> 00c0fb00 zf=1
+lsl 0023 -> ffffffff zf=1
+lar 002b -> 00c0f300 zf=1
+lsl 002b -> ffffffff zf=1
+lar 0033 -> 00c0f300 zf=1
+lsl 0033 -> ffffffff zf=1
+lar 003b -> 00c0f300 zf=1
+lsl 003b -> ffffffff zf=1
+lar 0043 -> 00c0f300 zf=1
+lsl 0043 -> ffffffff zf=1
+lar 1234 -> deadbeef zf=0
+lsl 1234 -> deadbeef zf=0
+lar 002f -> deadbeef zf=0
+lsl 002f -> deadbeef zf=0
+verr 0023 zf=1
+verw 0023 zf=0
+verr 002b zf=1
+verw 002b zf=1
+verr 0010 zf=0
+verw 0010 zf=0
+sgdt limit=00ff base=c0000000
+sidt limit=07ff base=c0001000
+sldt 0000
+str 0040
+smsw 003b

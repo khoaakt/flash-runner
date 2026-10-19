@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/emu"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+
+[profile.dev]
+opt-level = 1

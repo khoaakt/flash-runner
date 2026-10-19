@@ -1,0 +1,4 @@
+# The JIT installs generated wasm functions into the emulator's own indirect function table
+# (see docs/JIT.md): the table must be exported and growable.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--export-table", "-C", "link-arg=--growable-table"]

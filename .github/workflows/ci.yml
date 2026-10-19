@@ -1,0 +1,90 @@
+# Every command here also works from a fresh clone with no Flash runtime, podman, Haxe or Chrome (see AGENTS.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust tests and wasm build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p emu --lib
+      - run: cargo build --release --target wasm32-unknown-unknown -p emu --lib
+
+  javascript:
+    name: JavaScript unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run the tests that need no runtime or browser
+        run: |
+          for t in tools/native-sockets-test.mjs tools/zip-test.mjs web/context-menu-test.mjs web/lir-policy-test.mjs web/log-setting-test.mjs \
+                   web/nanojit-leaf-test.mjs web/nanojit-loop-test.mjs web/nanojit-memory-test.mjs web/nanojit-number-test.mjs \
+                   web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs; do
+            echo "::group::$t"
+            node "$t"
+            echo "::endgroup::"
+          done
+
+  ui:
+    name: Settings UI build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  helper:
+    name: Socket helper
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: native/helper/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Format, vet, build
+        working-directory: native/helper
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go build -o "$RUNNER_TEMP/flash-helper" .
+      - name: Protocol test against the built helper
+        run: node native/helper-test.mjs "$RUNNER_TEMP/flash-helper"
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 dir /repo --no-banner --redact -c /repo/.gitleaks.toml

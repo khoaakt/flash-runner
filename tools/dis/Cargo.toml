@@ -1,0 +1,14 @@
+# Raw x86-32 disassembler for captured NanoJIT native bytes. Standalone (not a workspace member):
+#   cargo build --offline --release --manifest-path tools/dis/Cargo.toml
+#   tools/dis/target/release/dis method.bin 289d1184 80     # file, entry address (hex), max instructions
+[package]
+name = "dis"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+iced-x86 = { version = "=1.21.0", default-features = false, features = ["std", "decoder", "intel", "no_evex", "no_vex", "no_xop", "no_d3now"] }

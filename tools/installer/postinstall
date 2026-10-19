@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs after the extension's files are laid down. pkgbuild stores each file's com.apple.provenance attribute as a ._ AppleDouble entry;
+# the Installer normally folds those back into attributes, but if one is left behind as a file, drop it: nothing in the extension is called ._*.
+# (The path is tools/installer/layout.mjs EXTENSION_DIR; FLASH_EXTENSION_DIR lets tools/installer-test.mjs point it at a copy.)
+dir="${FLASH_EXTENSION_DIR:-/Applications/Flash Runner/extension}"
+[ -d "$dir" ] && find "$dir" -name '._*' -type f -delete
+exit 0

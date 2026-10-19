@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>jank</title></head>
+<body style="margin:8px">
+<script>window.jank = null; window.pings = 0; window.ping = function (i) { window.pings++; return i; }; window.jankReport = function (s) { window.jank = s; window.done = true; return 1; };</script>
+<script>
+  // ?busy=300: the embedding page keeps its main thread busy for 300 ms every second (a portal page loading widgets / RSS): ExternalInterface calls from the movie wait for it
+  var busy = +(new URLSearchParams(location.search).get('busy') || 0);
+  if (busy) setInterval(function () { var t = Date.now(); while (Date.now() - t < busy); }, 1000);
+</script>
+<embed src="/tests/swf/jank.swf" type="application/x-shockwave-flash" width="480" height="300" allowscriptaccess="always"></body></html>

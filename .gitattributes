@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# binaries
+*.swf  binary
+*.png  binary
+*.mp4  binary
+*.wasm binary
+*.aot  binary
+
+# upstream code is not ours to count or diff in language statistics
+third_party/** linguist-vendored
+tests/swf/**   linguist-generated
