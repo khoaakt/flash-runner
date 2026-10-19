@@ -4,6 +4,8 @@
 //   node tools/firefox-test.mjs --geckodriver <path> [--firefox <firefox binary>] [--addon dist/firefox] [--page tests/ext/compat.html]
 //                               [--seconds 15] [--shots dir] [--headed] [--setting key=<json>]
 //                               [--clicks "x,y;x,y"] [--keys "a,b,Enter"]   real mouse clicks (page coordinates) and key presses after the first wait
+//                               [--keep-open [minutes]] [--also page,page]   with --headed: after the checks leave the window open (default 30 minutes, or until it
+//                                                                            is closed) with the add-on installed and --also pages in more tabs, to try it by hand
 // Needs: Firefox 128 or newer and geckodriver (https://github.com/mozilla/geckodriver/releases). Exit status 0 when every check passed.
 import { spawn } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readFileSync } from 'node:fs';
@@ -22,6 +24,9 @@ const seconds = +arg('--seconds', 15);
 const shots = resolve(arg('--shots', join(root, 'tests/out')));
 const headed = process.argv.includes('--headed');
 const clicks = String(arg('--clicks', '')), keys = String(arg('--keys', ''));
+const keepOpenArg = arg('--keep-open', null), keepOpen = keepOpenArg !== null;
+const keepMinutes = keepOpen ? (Number.isFinite(+keepOpenArg) && +keepOpenArg > 0 ? +keepOpenArg : 30) : 0;
+const also = String(arg('--also', '')).split(',').filter(Boolean);
 const settings = { enabled: true, openSwfLinks: true, autoplayMax: 8, clickToPlay: false, log: true, fpsLog: true };
 process.argv.forEach((a, i) => { if (a === '--setting') { const kv = process.argv[i + 1] || ''; const j = kv.indexOf('='); settings[kv.slice(0, j)] = JSON.parse(kv.slice(j + 1)); } });
 // the add-on's moz-extension:// host is a random UUID per profile unless the profile pins it
@@ -58,7 +63,7 @@ const wd = async (method, path, body) => {
 let sid = null;
 const cleanup = async () => { try { if (sid) await wd('DELETE', `/session/${sid}`); } catch {} try { gd.kill(); } catch {} server.close(); };
 process.on('exit', () => { try { gd.kill(); } catch {} });
-setTimeout(() => { console.error('WATCHDOG: test exceeded 170 s'); cleanup().then(() => process.exit(3)); }, 170000).unref();
+if (!keepOpen) setTimeout(() => { console.error('WATCHDOG: test exceeded 170 s'); cleanup().then(() => process.exit(3)); }, 170000).unref();
 
 for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${gdPort}/status`); break; } catch { await sleep(200); } }
 const prefs = {
@@ -125,6 +130,18 @@ try {
   const log = gdLog.join('').split('\n').filter((l) => /\[flash\]|PPP_InitializeModule|JavaScript error|Error:/i.test(l));
   check('the emulated Flash runtime initialised', log.some((l) => /PPP_InitializeModule -> 0/.test(l)), log.slice(-8).join('\n'));
   console.log(log.slice(0, 14).map((l) => '   ' + l.slice(0, 200)).join('\n'));
+  if (keepOpen) {
+    const first = await wd('GET', `${S}/window`);
+    for (const p of also) {
+      const { handle } = await wd('POST', `${S}/window/new`, { type: 'tab' });
+      await wd('POST', `${S}/window`, { handle });
+      await wd('POST', `${S}/url`, { url: `${base}/${p}` });
+    }
+    await wd('POST', `${S}/window`, { handle: first });
+    console.log(`\nFirefox stays open for up to ${keepMinutes} minutes (close the window to end). Pages: ${[page, ...also].join(', ')}`);
+    const until = Date.now() + keepMinutes * 60000;
+    while (Date.now() < until) { try { await wd('GET', `${S}/window/handles`); } catch { break; } await sleep(2000); }
+  }
 } catch (e) {
   check('test run', false, e && e.stack || String(e));
 }

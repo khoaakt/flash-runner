@@ -27,6 +27,9 @@ node tools/firefox-test.mjs --geckodriver /path/to/geckodriver --page tests/ext/
 node tools/firefox-test.mjs --geckodriver /path/to/geckodriver --page tests/ext/input.html --clicks "100,30" --keys "h,i" --shots /tmp/shots   # type into a Flash field
 ```
 
+To try the add-on by hand, add `--headed --keep-open [minutes] --also tests/ext/input.html,tests/ext/net.html`: after the checks the window stays open (30 minutes by default, or until you close it) with the
+add-on installed and those pages in more tabs. It uses a throw-away profile, so nothing of yours is touched.
+
 The screenshot lands in `--shots` (default `tests/out`). `--headed` shows the window; `FF_TEST_LOG=<file>` saves Firefox's console output (the `[flash]` lines appear there because the test turns the
 Debug log on). WebDriver cannot open `moz-extension://` pages itself, so the test opens the settings page from Firefox's privileged context (`geckodriver --allow-system-access`).
 `node tools/firefox-manifest-test.mjs` checks the Firefox manifest without a browser and runs in CI.
