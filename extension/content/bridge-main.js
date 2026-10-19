@@ -81,42 +81,73 @@
           else out += Object.prototype.hasOwnProperty.call(ESC, e) ? ESC[e] : e;
         }
       }
+      // Parsing never runs anything: value() returns a thunk, and only a fully parsed script is evaluated (a refused script has no effect).
       value() {
         if (++this.depth > 64) throw new SyntaxError('too deep');
         try {
           const c = this.peek();
-          if (c === '"' || c === "'") return this.str();
+          if (c === '"' || c === "'") { const v = this.str(); return () => v; }
           if (c === '[') {
-            this.i++; const a = [];
-            if (this.peek() === ']') { this.i++; return a; }
-            for (;;) { a.push(this.value()); if (this.peek() === ',') { this.i++; continue; } this.eat(']'); return a; }
+            this.i++; const items = [];
+            if (this.peek() === ']') this.i++;
+            else for (;;) { items.push(this.value()); if (this.peek() === ',') { this.i++; continue; } this.eat(']'); break; }
+            return () => items.map((f) => f());
           }
           if (c === '(') { this.i++; const v = this.value(); this.eat(')'); return v; }
           if (c === '{') {
-            this.i++; const o = {};
-            if (this.peek() === '}') { this.i++; return o; }
-            for (;;) {
+            this.i++; const props = [];
+            if (this.peek() === '}') this.i++;
+            else for (;;) {
               const k = (this.peek() === '"' || this.peek() === "'") ? this.str() : this.ident();
               this.eat(':');
-              const v = this.value();
-              if (k === '__proto__') { if (v === null || typeof v === 'object') Object.setPrototypeOf(o, v); }   // as in a literal: sets the prototype, never an own key
-              else Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
-              if (this.peek() === ',') { this.i++; continue; } this.eat('}'); return o;
+              props.push([k, this.value()]);
+              if (this.peek() === ',') { this.i++; continue; } this.eat('}'); break;
             }
+            return () => {
+              const o = {};
+              for (const [k, f] of props) {
+                const v = f();
+                if (k === '__proto__') { if (v === null || typeof v === 'object') Object.setPrototypeOf(o, v); }   // as in a literal: sets the prototype, never an own key
+                else Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+              }
+              return o;
+            };
           }
-          if (this.eatWord('true')) return true;
-          if (this.eatWord('false')) return false;
-          if (this.eatWord('null')) return null;
-          if (this.eatWord('undefined')) return undefined;
+          if (this.eatWord('true')) return () => true;
+          if (this.eatWord('false')) return () => false;
+          if (this.eatWord('null')) return () => null;
+          if (this.eatWord('undefined')) return () => undefined;
+          if (this.eatWord('void')) { const f = this.value(); return () => { f(); }; }
           this.ws(); NUM.lastIndex = this.i; const m = NUM.exec(this.s);
-          if (!m) throw new SyntaxError('unsupported expression');
-          this.i = NUM.lastIndex; return Number(m[0]);
+          if (m && !/[A-Za-z_$]/.test(this.s[NUM.lastIndex] || '')) { this.i = NUM.lastIndex; const n = Number(m[0]); return () => n; }
+          if (this.literalOnly) throw new SyntaxError('unsupported expression');
+          return this.chain();
         } finally { this.depth--; }
+      }
+      /** name(.name)* with calls: window.location.href, pageFn("x"), obj.method(1).other. No operators, no assignment, no indexing. */
+      chain() {
+        const first = this.ident(), steps = [];       // steps: ['get', name] | ['call', [thunks]]
+        for (;;) {
+          const c = this.peek();
+          if (c === '.') { this.i++; steps.push(['get', this.ident()]); }
+          else if (c === '(') {
+            this.i++; const args = [];
+            if (this.peek() === ')') this.i++; else for (;;) { args.push(this.value()); if (this.peek() === ',') { this.i++; continue; } this.eat(')'); break; }
+            steps.push(['call', args]);
+          } else break;
+        }
+        return () => {
+          if (!(first in window)) throw new ReferenceError(first + ' is not defined');
+          let self = window, v = window[first];
+          for (const [kind, x] of steps) {
+            if (kind === 'get') { self = v; v = v[x]; }
+            else { if (typeof v !== 'function') throw new TypeError('not a function'); v = v.apply(self, x.map((f) => f())); self = window; }
+          }
+          return v;
+        };
       }
       end() { this.ws(); if (this.i !== this.s.length) throw new SyntaxError('unexpected text'); }
     }
-    /** A single literal (the answer to a call into Flash). */
-    const literal = (src) => { const r = new Reader(src); const v = r.value(); r.end(); return v; };
     const xmlEsc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
     const flashToXML = (v) => {      // the same output as the __flash__toXML that Flash defines, tests in the same order (property names are not escaped there)
       const t = typeof v;
@@ -131,34 +162,39 @@
       return '<null/>';
     };
     const HELPERS = /^\s*function __flash__arrayToXML\(obj\)/;
-    const callShape = (src) => {
-      const r = new Reader(src);
+    /** A literal, or a name/call chain, as one expression. */
+    const expression = (src, literalOnly) => { const r = new Reader(src); r.literalOnly = literalOnly; const f = r.value(); if (r.peek() === ';') r.i++; r.end(); return f; };
+    /** try { __flash__toXML(<expression>) ; } catch (e) { "<undefined/>"; } */
+    const wrapped = (r) => {
       r.eatWord('try'); r.eat('{');
       if (!r.eatWord('__flash__toXML')) throw new SyntaxError('unsupported script');
-      r.eat('(');
-      const path = [r.ident()];
-      while (r.peek() === '.') { r.i++; path.push(r.ident()); }
-      r.eat('(');
-      const args = [];
-      if (r.peek() === ')') r.i++; else for (;;) { args.push(r.value()); if (r.peek() === ',') { r.i++; continue; } r.eat(')'); break; }
-      r.eat(')'); if (r.peek() === ';') r.i++; r.eat('}');
+      r.eat('('); const f = r.value(); r.eat(')'); if (r.peek() === ';') r.i++; r.eat('}');
       if (!r.eatWord('catch')) throw new SyntaxError('unsupported script');
       r.eat('('); r.ident(); r.eat(')'); r.eat('{');
       if (r.peek() !== '"' || r.str() !== '<undefined/>') throw new SyntaxError('unsupported script');
       if (r.peek() === ';') r.i++; r.eat('}'); r.end();
-      return { path, args };
+      return () => { try { return flashToXML(f()); } catch { return '<undefined/>'; } };
     };
-    /** Runs one ExecuteScript source; returns the script's value, or throws SyntaxError for a shape it does not know. */
+    /** `a(); b.c(1); void(0)`: the statements of a javascript: link or a plain script; the value is the last one's. */
+    const statements = (r) => {
+      const list = [];
+      for (;;) {
+        if (r.peek() === undefined) break;
+        list.push(r.value());
+        if (r.peek() === ';') { r.i++; continue; }
+        r.end(); break;
+      }
+      if (!list.length) throw new SyntaxError('empty script');
+      return () => { let v; for (const f of list) v = f(); return v; };
+    };
+    /** Runs one ExecuteScript source; returns the script's value, or throws SyntaxError (nothing has run) for a shape it does not know. */
     const exec = (src) => {
       if (HELPERS.test(src)) return undefined;
-      const { path, args } = callShape(src);
-      try {
-        let self = window, fn = window;
-        for (const k of path) { self = fn; fn = fn[k]; }
-        if (typeof fn !== 'function') throw new TypeError(path.join('.') + ' is not a function');
-        return flashToXML(fn.apply(path.length > 1 ? self : window, args));
-      } catch { return '<undefined/>'; }
+      const r = new Reader(src);
+      return (/^\s*try\b/.test(src) ? wrapped(r) : statements(r))();
     };
+    /** The answer to a call into Flash: a literal. */
+    const literal = (src) => expression(src, true)();
     return { literal, exec };
   })();
   window.__flashRunnerBridge = { evalFree };       // also what the unit test (web/bridge-eval-test.mjs) drives

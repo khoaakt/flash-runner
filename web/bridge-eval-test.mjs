@@ -37,6 +37,7 @@ const calls = [
   'pageEcho("",0,true,[])',
   'pageEcho([[1,[2]],({})],.5,true,({a:({b:({c:"d"})})}))',
   'ns.greet("you")', 'noReturn()', 'giveDate()', 'giveFn()', 'boom()', 'missing(1)', 'ns.missing(1)',
+  'seen.length', 'ns.greet(seen.length)', 'pageEcho("x",1,true,null).echoed', 'ns.greet(ns.greet("a"))', 'pageEcho(void(0),2,false,[pageEcho("in",0,false,null).list])',
 ];
 let failed = 0;
 const t = (name, fn) => { try { fn(); console.log('ok   ' + name); } catch (e) { failed++; console.log('FAIL ' + name + '\n     ' + (e && e.message)); } };
@@ -61,10 +62,23 @@ t('the answer to a call into Flash is parsed like eval would', () => {
   }
 });
 
+t('bare statements (a javascript: link) give the value eval gives', () => {
+  for (const script of ['ns.greet("a")', 'seen.push(1); ns.greet("b");', 'void(0)', 'void(seen.push(2))', 'pageEcho("x",1,true,null).list', 'seen.length', 'missing.deeper(1)', 'ns.greet(missing)', '1.5', '"s"']) {
+    const a = page(), b = page();
+    vm.runInContext(setup, a); vm.runInContext(setup, b);
+    let viaEval, viaFree, errEval, errFree;
+    try { viaEval = vm.runInContext(script, a); } catch (e) { errEval = e.name; }
+    try { viaFree = b.window.__flashRunnerBridge.evalFree.exec(script); } catch (e) { errFree = e.name; }
+    assert.equal(errFree, errEval, script);
+    assert.equal(JSON.stringify(viaFree), JSON.stringify(viaEval), script);
+    assert.equal(vm.runInContext('seen.length', b), vm.runInContext('seen.length', a), script);
+  }
+});
+
 t('anything that is not a recorded shape is refused, never evaluated', () => {
   const p = page(), free = p.window.__flashRunnerBridge.evalFree;
   vm.runInContext('var hit = 0;', p);
-  for (const bad of ['hit = 1', 'try { hit = 1; } catch (e) { "<undefined/>"; }', wrap('pageEcho(hit = 1)'), wrap('pageEcho(function(){})'), wrap('pageEcho(1+1)'), wrap('a.b[0]()'), wrap('seen.length'),
+  for (const bad of ['hit = 1', 'try { hit = 1; } catch (e) { "<undefined/>"; }', wrap('pageEcho(hit = 1)'), wrap('pageEcho(function(){})'), wrap('pageEcho(1+1)'), wrap('a.b[0]()'), 'seen.push(1); hit = 1', 'seen.push(1) hit = 1', 'void(seen.push(1)) || 2',
     'try { __flash__toXML(f(1)) ; } catch (e) { hit = 1; }', wrap('f(1)') + ' hit = 1', wrap('f(' + '['.repeat(200) + ']'.repeat(200) + ')')]) {
     assert.throws(() => free.exec(bad), (e) => e.name === 'SyntaxError', bad);
   }

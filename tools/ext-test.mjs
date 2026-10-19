@@ -384,6 +384,14 @@ console.log('   csp page result:', cs.iframes === 1 ? 'iframe loaded despite CSP
   check('no-eval CSP page: page -> Flash callbacks return their values', calls.some((c) => /page->flash echo = "flash:hi from page"/.test(c)) && calls.some((c) => /page->flash sum = 42\.5/.test(c)), calls.join(' | '));
 }
 
+// ---- navigateToURL("javascript:...") runs in the embedding page, with eval and under the no-eval CSP
+for (const q of ['', '?csp=noeval']) {
+  const js = await newTab(`${base}/tests/ext/jslink.html${q}`);
+  await sleep(9000);
+  const links = JSON.parse(await js.eval('JSON.stringify(window.links)').catch(() => '[]'));
+  check(`javascript: link from Flash reaches the page${q ? ' (CSP without eval)' : ''}`, links.length === 1 && links[0] === '["from flash",42,true]', JSON.stringify(links));
+}
+
 // ---- direct .swf navigation goes through the viewer
 const direct = await newTab(`${base}/tests/swf/testsrc.swf`);
 await sleep(4000);

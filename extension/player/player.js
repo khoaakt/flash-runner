@@ -77,7 +77,13 @@ export async function startPlayer(cfg, host = root) {
     pageUrl: cfg.pageUrl, baseUrl: cfg.baseUrl, pageBridge: inFrame && scriptAccessAllowed(cfg) ? pageBridge : null,
     onExit: (m) => { if (m.code !== 0) message(`<b>Flash stopped (code ${m.code})</b><small>${m.code === 134 ? 'The movie ran out of memory or aborted. Reload the page to try again.' : 'The movie crashed.'}</small>`, { label: 'Restart', onClick: () => startPlayer(cfg) }); },
     onError: (m) => message(`<b>Could not start Flash</b><small>${String(m.message).split('\n')[0].replace(/[<>&]/g, '')}</small>`, { label: 'Retry', onClick: () => startPlayer(cfg) }),
-    onNavigate: (url, target) => { try { window.open(url, target && target !== '_self' ? target : '_blank'); } catch { /* popup blocked */ } },
+    onNavigate: (url, target) => {
+      if (/^javascript:/i.test(url)) {      // a javascript: link runs in the embedding page, under the same allowScriptAccess rule as ExecuteScript
+        if (inFrame && scriptAccessAllowed(cfg)) { let src = url.replace(/^javascript:/i, ''); try { src = decodeURIComponent(src); } catch { /* keep as is */ } pageBridge({ op: 'exec', script: src }, false); }
+        return;
+      }
+      try { window.open(url, target && target !== '_self' ? target : '_blank'); } catch { /* popup blocked */ }
+    },
   });
   const loading = document.createElement('div'); loading.className = 'msg'; loading.style.background = 'transparent'; loading.style.pointerEvents = 'none';
   loading.innerHTML = '<small>Starting Flash…</small>'; host.append(loading);

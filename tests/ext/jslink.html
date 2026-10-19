@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>jslink</title></head>
+<body style="margin:8px;font:14px system-ui">
+<script>
+  window.evalState = (() => { try { eval('1'); return 'allowed'; } catch (e) { return e.name; } })();   // ?csp=noeval is served without eval permission
+  window.links = [];
+  function jsLink(a, b, c) { window.links.push(JSON.stringify([a, b, c])); }
+</script>
+<embed src="/tests/swf/jslink.swf" type="application/x-shockwave-flash" width="200" height="60" allowscriptaccess="always">
+</body></html>
