@@ -22,7 +22,8 @@ const geckodriver = arg('--geckodriver', process.env.GECKODRIVER);
 if (!geckodriver) { console.error('give --geckodriver <path> (or set GECKODRIVER)'); process.exit(2); }
 const firefox = arg('--firefox', process.env.FIREFOX || (process.platform === 'win32' ? join(process.env.LOCALAPPDATA || '', 'Mozilla Firefox', 'firefox.exe') : undefined));
 const addon = resolve(arg('--addon', join(root, 'dist/firefox')));
-const page = arg('--page', 'tests/ext/compat.html');
+let page = arg('--page', 'tests/ext/compat.html');   // --sockets replaces it with tests/ext/sock.html
+const withSockets = process.argv.includes('--sockets');   // run tests/ext/sock.html against a local echo server through the native helper (needs the helper installed for Firefox)
 const seconds = +arg('--seconds', 15);
 const shots = resolve(arg('--shots', join(root, 'tests/out')));
 const headed = process.argv.includes('--headed');
@@ -55,6 +56,19 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
+
+let sockServer = null, sockSeen = '';
+if (withSockets) {    // the helper refuses loopback unless told otherwise; geckodriver, Firefox and the helper inherit this variable
+  const { createServer: tcp } = await import('node:net');
+  const { tmpdir } = await import('node:os');
+  const cfg = join(tmpdir(), 'flash-runner-ff-sockets.json'); writeFileSync(cfg, JSON.stringify({ allowPrivate: true })); process.env.FLASHRUNNER_SOCKETS_CONFIG = cfg;
+  sockServer = tcp((c) => c.on('data', (d) => {
+    const t = d.toString('latin1'); sockSeen += t;
+    if (t.startsWith('<policy-file-request/>')) c.end('<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="*"/></cross-domain-policy>\0'); else c.write(d);
+  }));
+  await new Promise((r) => sockServer.listen(0, '127.0.0.1', r));
+  page = 'tests/ext/sock.html?sock=' + sockServer.address().port;
+}
 
 const gdPort = 4400 + Math.floor(Math.random() * 500);
 const gdLog = [];
@@ -146,6 +160,11 @@ try {
   const shotFile = join(shots, 'firefox-page.png'); writeFileSync(shotFile, Buffer.from(png, 'base64'));
   if (expectPass) { const r = probeResult(shotFile); check('the movie painted its PASS square', r.pass, JSON.stringify(r)); }
   console.log('   screenshot', shotFile);
+  if (withSockets) {
+    const port = sockServer.address().port, all = gdLog.join('');
+    check('a Flash socket reaches the helper from the player frame (through the background relay)', all.includes(`[sock] connect 127.0.0.1:${port} -> ok`), all.split('\n').filter((l) => /\[sock\]/.test(l)).join('\n') || 'no [sock] lines');
+    check('the local server received the movie\'s bytes', sockSeen.includes('hello socket'), JSON.stringify(sockSeen.slice(0, 80)));
+  }
   const log = gdLog.join('').split('\n').filter((l) => /\[flash\]|PPP_InitializeModule|JavaScript error|Error:/i.test(l));
   check('the emulated Flash runtime initialised', log.some((l) => /PPP_InitializeModule -> 0/.test(l)), log.slice(-8).join('\n'));
   console.log(log.slice(0, 14).map((l) => '   ' + l.slice(0, 200)).join('\n'));

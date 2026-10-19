@@ -2,7 +2,9 @@
 // One helper process (= one native port) per player; created on the first socket request.
 const HOST = 'com.flashrunner.sockets';
 // Chrome's lastError texts for a host that is not (correctly) registered; "exited" / "communicating" are the helper dying, not absent.
-const NOT_INSTALLED = /not found|forbidden|access|failed to start/i;
+const NOT_INSTALLED = /not found|forbidden|access|failed to start|no such native application/i;
+// Firefox refuses connectNative from an add-on frame embedded in a page, so there the background script owns the native port (background.js).
+const viaBackground = () => !!chrome.runtime.getManifest?.().browser_specific_settings;
 const RETRY_MS = 5000;                               // after "not installed": answer instantly, look again at most this often
 
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
@@ -16,10 +18,11 @@ export class NativeSockets {
   ensure() {
     if (this.port) return true;
     if (this.missing && Date.now() - this.missingAt < RETRY_MS) return false;
-    try { this.port = chrome.runtime.connectNative(HOST); } catch (e) { this.gone(String(e && e.message || e)); return false; }
-    this.port.onMessage.addListener((m) => this.fromHelper(m));
+    try { this.port = viaBackground() ? chrome.runtime.connect({ name: 'flash-runner:native-sockets' }) : chrome.runtime.connectNative(HOST); } catch (e) { this.gone(String(e && e.message || e)); return false; }
+    let closedBy = null;                              // the relay's explanation, sent just before it disconnects
+    this.port.onMessage.addListener((m) => { if (m && m.relayClosed !== undefined) closedBy = m.relayClosed; else this.fromHelper(m); });
     this.port.onDisconnect.addListener((p) => {
-      const why = p?.error?.message || chrome.runtime.lastError?.message || 'helper exited';
+      const why = closedBy || p?.error?.message || chrome.runtime.lastError?.message || 'helper exited';
       this.port = null;
       for (const rid of this.pending) this.deliver({ rid, ok: false, code: 'EHELPER', message: why });
       this.pending.clear();

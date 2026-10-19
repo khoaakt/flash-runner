@@ -75,5 +75,28 @@ const make = () => { const got = [], states = [], problems = [], s = new NativeS
   check('"Native host has exited." is not reported as missing', states.length === 0, states.join());
 }
 
+{ // Firefox: the frame cannot open a native port, so it talks to the background relay (extension/background.js) over runtime.connect
+  hostError = null;
+  const before = connects, relays = [];
+  globalThis.chrome.runtime.getManifest = () => ({ browser_specific_settings: { gecko: { id: 'x@y' } } });
+  globalThis.chrome.runtime.connect = (info) => {
+    const msg = [], dis = [], port = { info, posted: [], onMessage: { addListener: (f) => msg.push(f) }, onDisconnect: { addListener: (f) => dis.push(f) },
+      postMessage: (m) => port.posted.push(m), disconnect() {}, fromRelay: (m) => msg.forEach((f) => f(m)), die: () => dis.forEach((f) => f({ error: null })) };
+    relays.push(port); return port;
+  };
+  const { s, got, states } = make();
+  s.send({ t: 'connect', rid: 1, host: 'h', port: 5000 });
+  await tick();
+  check('Firefox: the socket client opens the relay port, not a native port', relays.length === 1 && relays[0].info.name === 'flash-runner:native-sockets' && connects === before, `${relays.length} ${connects} ${before}`);
+  check('Firefox: requests pass through the relay unchanged', relays[0].posted.length === 1 && relays[0].posted[0].t === 'connect' && relays[0].posted[0].rid === 1, JSON.stringify(relays[0].posted));
+  relays[0].fromRelay({ rid: 1, ok: true, id: 7, remote: { ip: '1.2.3.4', port: 5000 } });
+  check('Firefox: the helper\'s reply reaches the worker', got.length === 1 && got[0].rid === 1 && got[0].ok === true, JSON.stringify(got));
+  relays[0].fromRelay({ relayClosed: 'No such native application com.flashrunner.sockets' });
+  relays[0].die();
+  await tick();
+  check('Firefox: the relay explaining that the host is not registered is reported as missing', states.join() === 'missing', states.join());
+  delete globalThis.chrome.runtime.getManifest; delete globalThis.chrome.runtime.connect;
+}
+
 console.log(failed ? `${failed} FAILED` : 'all ok');
 process.exit(failed ? 1 : 0);

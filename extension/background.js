@@ -73,3 +73,17 @@ chrome.runtime.onMessage.addListener((msg) => {
   }).catch(() => {});
   return false;
 });
+
+// Firefox refuses connectNative from the player frame (an add-on page embedded in a web page: "An unexpected error occurred"), while the
+// background script may open it. The frame (player/native-sockets.js) therefore opens this relay port and the background owns the native
+// port; messages pass through unchanged. Chrome does not use the relay.
+chrome.runtime.onConnect.addListener((relay) => {
+  if (relay.name !== 'flash-runner:native-sockets') return;
+  let native = null;
+  const end = (why) => { try { relay.postMessage({ relayClosed: why }); relay.disconnect(); } catch { /* the frame is gone */ } };
+  try { native = chrome.runtime.connectNative('com.flashrunner.sockets'); } catch (e) { end(String(e && e.message || e)); return; }
+  native.onMessage.addListener((m) => { try { relay.postMessage(m); } catch { /* the frame is gone */ } });
+  native.onDisconnect.addListener((p) => { native = null; end((p && p.error && p.error.message) || 'helper exited'); });
+  relay.onMessage.addListener((m) => { try { native?.postMessage(m); } catch { /* disconnected: onDisconnect reports it */ } });
+  relay.onDisconnect.addListener(() => { try { native?.disconnect(); } catch { /* already gone */ } native = null; });
+});
