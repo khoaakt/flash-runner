@@ -52,7 +52,7 @@ Observed by tracing a real 32.0.0.363 build (`web/flash-smoke.mjs --trace`) and 
   is read-only data (own properties only). Verified in Chrome: same-domain allowed, `never` blocked, cross-domain blocked by default and
   allowed with `always` (`tests/ext/ei2.html`, `ei-never.html`, `ei-cross*.html`).
 - Limits: pages whose CSP forbids `eval` cannot receive `ExecuteScript`; raw Flash sockets are not available inside the emulator (it has no
-  network stack); the extension provides them through the native socket helper (see the README).
+  network stack); the extension provides them through the native socket helper (see [HELPER.md](HELPER.md)).
 
 ## Raw sockets
 Flash 32 opens sockets through `PPB_TCPSocket_Private;0.5` (plus `PPB_NetAddress` / `PPB_NetAddress_Private` for addresses; the public

@@ -1,6 +1,6 @@
 # Distribution
 
-How the extension and the online game helper reach users, and why that differs by operating system. The README has the short table; this file
+How the extension and the online game helper reach users, and why that differs by operating system. The README has the short version; this file
 has the measurements and the research behind it.
 
 ## What is handed out
