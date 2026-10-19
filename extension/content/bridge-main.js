@@ -50,9 +50,126 @@
   };
   const describe = (e) => { try { return e && e.message ? `${e.name || 'Error'}: ${e.message}` : String(e); } catch { return 'script error'; } };
 
+  // ---- pages whose CSP forbids eval -------------------------------------------------------------------------------
+  // Under a CSP without 'unsafe-eval', (0, eval)(...) throws EvalError. The scripts Flash actually sends have two shapes (recorded from
+  // ExternalInterface.call and Flash's own helper definitions), so those are run without eval; anything else is refused, never guessed.
+  //   1. the helper definitions (__flash__toXML & co): their job is done by `flashToXML` below, so they are accepted and ignored;
+  //   2. try { __flash__toXML(path.to.fn(literal, ...)) ; } catch (e) { "<undefined/>"; }
+  // `literal` is a string, number, boolean, null, undefined, array or object literal (what Flash serialises its arguments to). The same
+  // literal parser reads the JavaScript expression Flash answers with when the page calls a Flash callback.
+  const evalFree = (() => {
+    const WS = /\s/, IDENT = /[A-Za-z_$][A-Za-z0-9_$]*/y, NUM = /-?(?:NaN|Infinity|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/y;
+    const ESC = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' };
+    const BACKSLASH = String.fromCharCode(92);
+    class Reader {
+      constructor(s) { this.s = s; this.i = 0; this.depth = 0; }
+      ws() { while (this.i < this.s.length && WS.test(this.s[this.i])) this.i++; }
+      peek() { this.ws(); return this.s[this.i]; }
+      eat(c) { if (this.peek() !== c) throw new SyntaxError('expected ' + c); this.i++; }
+      eatWord(w) { this.ws(); if (this.s.startsWith(w, this.i)) { this.i += w.length; return true; } return false; }
+      ident() { this.ws(); IDENT.lastIndex = this.i; const m = IDENT.exec(this.s); if (!m) throw new SyntaxError('expected a name'); this.i = IDENT.lastIndex; return m[0]; }
+      str() {
+        const q = this.s[this.i++]; let out = '';
+        for (;;) {
+          const c = this.s[this.i++];
+          if (c === undefined) throw new SyntaxError('unterminated string');
+          if (c === q) return out;
+          if (c !== BACKSLASH) { out += c; continue; }
+          const e = this.s[this.i++];
+          if (e === 'x') { out += String.fromCharCode(parseInt(this.s.substr(this.i, 2), 16)); this.i += 2; }
+          else if (e === 'u') { out += String.fromCharCode(parseInt(this.s.substr(this.i, 4), 16)); this.i += 4; }
+          else out += Object.prototype.hasOwnProperty.call(ESC, e) ? ESC[e] : e;
+        }
+      }
+      value() {
+        if (++this.depth > 64) throw new SyntaxError('too deep');
+        try {
+          const c = this.peek();
+          if (c === '"' || c === "'") return this.str();
+          if (c === '[') {
+            this.i++; const a = [];
+            if (this.peek() === ']') { this.i++; return a; }
+            for (;;) { a.push(this.value()); if (this.peek() === ',') { this.i++; continue; } this.eat(']'); return a; }
+          }
+          if (c === '(') { this.i++; const v = this.value(); this.eat(')'); return v; }
+          if (c === '{') {
+            this.i++; const o = {};
+            if (this.peek() === '}') { this.i++; return o; }
+            for (;;) {
+              const k = (this.peek() === '"' || this.peek() === "'") ? this.str() : this.ident();
+              this.eat(':');
+              const v = this.value();
+              if (k === '__proto__') { if (v === null || typeof v === 'object') Object.setPrototypeOf(o, v); }   // as in a literal: sets the prototype, never an own key
+              else Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+              if (this.peek() === ',') { this.i++; continue; } this.eat('}'); return o;
+            }
+          }
+          if (this.eatWord('true')) return true;
+          if (this.eatWord('false')) return false;
+          if (this.eatWord('null')) return null;
+          if (this.eatWord('undefined')) return undefined;
+          this.ws(); NUM.lastIndex = this.i; const m = NUM.exec(this.s);
+          if (!m) throw new SyntaxError('unsupported expression');
+          this.i = NUM.lastIndex; return Number(m[0]);
+        } finally { this.depth--; }
+      }
+      end() { this.ws(); if (this.i !== this.s.length) throw new SyntaxError('unexpected text'); }
+    }
+    /** A single literal (the answer to a call into Flash). */
+    const literal = (src) => { const r = new Reader(src); const v = r.value(); r.end(); return v; };
+    const xmlEsc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    const flashToXML = (v) => {      // the same output as the __flash__toXML that Flash defines, tests in the same order (property names are not escaped there)
+      const t = typeof v;
+      if (t === 'string') return '<string>' + xmlEsc(v) + '</string>';
+      if (t === 'undefined') return '<undefined/>';
+      if (t === 'number') return '<number>' + v + '</number>';
+      if (v == null) return '<null/>';
+      if (t === 'boolean') return v ? '<true/>' : '<false/>';
+      if (v instanceof Date) return '<date>' + v.getTime() + '</date>';
+      if (v instanceof Array) { let s = '<array>'; for (let i = 0; i < v.length; i++) s += '<property id="' + i + '">' + flashToXML(v[i]) + '</property>'; return s + '</array>'; }
+      if (t === 'object') { let s = '<object>'; for (const p in v) s += '<property id="' + p + '">' + flashToXML(v[p]) + '</property>'; return s + '</object>'; }
+      return '<null/>';
+    };
+    const HELPERS = /^\s*function __flash__arrayToXML\(obj\)/;
+    const callShape = (src) => {
+      const r = new Reader(src);
+      r.eatWord('try'); r.eat('{');
+      if (!r.eatWord('__flash__toXML')) throw new SyntaxError('unsupported script');
+      r.eat('(');
+      const path = [r.ident()];
+      while (r.peek() === '.') { r.i++; path.push(r.ident()); }
+      r.eat('(');
+      const args = [];
+      if (r.peek() === ')') r.i++; else for (;;) { args.push(r.value()); if (r.peek() === ',') { r.i++; continue; } r.eat(')'); break; }
+      r.eat(')'); if (r.peek() === ';') r.i++; r.eat('}');
+      if (!r.eatWord('catch')) throw new SyntaxError('unsupported script');
+      r.eat('('); r.ident(); r.eat(')'); r.eat('{');
+      if (r.peek() !== '"' || r.str() !== '<undefined/>') throw new SyntaxError('unsupported script');
+      if (r.peek() === ';') r.i++; r.eat('}'); r.end();
+      return { path, args };
+    };
+    /** Runs one ExecuteScript source; returns the script's value, or throws SyntaxError for a shape it does not know. */
+    const exec = (src) => {
+      if (HELPERS.test(src)) return undefined;
+      const { path, args } = callShape(src);
+      try {
+        let self = window, fn = window;
+        for (const k of path) { self = fn; fn = fn[k]; }
+        if (typeof fn !== 'function') throw new TypeError(path.join('.') + ' is not a function');
+        return flashToXML(fn.apply(path.length > 1 ? self : window, args));
+      } catch { return '<undefined/>'; }
+    };
+    return { literal, exec };
+  })();
+  window.__flashRunnerBridge = { evalFree };       // also what the unit test (web/bridge-eval-test.mjs) drives
+  const isEvalBlocked = (e) => !!e && (e.name === 'EvalError' || /unsafe-eval|Content Security Policy/i.test(String(e.message)));
+  // Plain eval first (identical behaviour wherever it works); the eval-free path only when the page's CSP refused it.
+  const evalScript = (src) => { try { return (0, eval)(src); } catch (e) { if (isEvalBlocked(e)) return evalFree.exec(src); throw e; } };
+  const evalAnswer = (src) => { try { return (0, eval)(src); } catch (e) { if (isEvalBlocked(e)) return evalFree.literal(src); throw e; } };
+
   const run = (st, m) => {
     switch (m.op) {
-      case 'exec': return enc(st, (0, eval)(m.script));                      // indirect eval: global scope, like NPN_Evaluate
+      case 'exec': return enc(st, evalScript(m.script));                      // indirect eval: global scope, like NPN_Evaluate
       case 'get': return enc(st, Object(target(st, m.id))[m.name]);
       case 'set': target(st, m.id)[m.name] = dec(st, m.value); return { t: 'u' };
       case 'remove': delete target(st, m.id)[m.name]; return { t: 'u' };
@@ -123,7 +240,7 @@
     const xml = '<invoke name="' + esc(name) + '" returntype="javascript"><arguments>' + args.map(toXML).join('') + '</arguments></invoke>';
     return callFlash(f, 'CallFunction', [xml]).then((r) => {
       if (!r.ok) throw new Error(r.exception || 'call failed');
-      return typeof r.value === 'string' && r.value ? (0, eval)(r.value) : undefined;     // Flash answers with a JS expression
+      return typeof r.value === 'string' && r.value ? evalAnswer(r.value) : undefined;     // Flash answers with a JS expression
     });
   };
 

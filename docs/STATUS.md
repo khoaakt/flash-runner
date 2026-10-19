@@ -78,6 +78,15 @@ The server is nginx-rtmp in podman serving an ffmpeg-generated stream (`tools/rt
 - Not tested: RTMPS, RTMPT, authentication, recording or publishing to a server, a stream from the internet, other servers than nginx-rtmp.
 - On this Windows machine a podman published port accepts connections but carries no data; the test reaches the server through the podman VM's address.
 
+## PoC: pages whose CSP forbids eval
+
+Branch `poc/missing-features`. The bridge in the page (`extension/content/bridge-main.js`) ran Flash's `ExecuteScript` text with `eval`, which a CSP without `'unsafe-eval'` refuses. It now tries `eval` first and, only when that throws `EvalError`, runs the two script shapes Flash really sends without it: Flash's helper definitions (`__flash__toXML` and friends, ignored because the bridge does their job) and `try { __flash__toXML(path.to.fn(literal, ...)) ; } catch (e) { "<undefined/>"; }`, plus the literal Flash answers with when the page calls a Flash callback. Anything else is refused with a `SyntaxError`, never guessed.
+
+- `web/bridge-eval-test.mjs` runs 12 scripts both ways in a fake page (Flash's recorded helper text under real eval against the eval-free path): same XML, same arguments seen by the page function; and checks that other shapes are refused and not run.
+- Chrome: `tools/ext-test.mjs` serves `tests/ext/ei2.html?csp=noeval` with `script-src 'self' 'unsafe-inline'`; the page's own `eval` throws `EvalError`, and `ExternalInterface.call` into the page, plus the page calling the `echo` / `sum` callbacks of the movie, still work.
+- Firefox: the same page through `tools/firefox-test.mjs --page "tests/ext/ei2.html?csp=noeval" --page-eval ...` gives `evalState: EvalError` and the same calls.
+- Not covered: scripts of other shapes (for example `navigateToURL("javascript:...")`, or calls whose arguments are not literals), `ExternalInterface.call("eval", ...)` (the page's own `eval` is refused there too, as it would be for any script), and pages whose CSP also blocks the player frame (`frame-src`), which already fall back to the viewer button.
+
 ## Debug log setting (extension)
 
 `log` (default `false`) in `extension/options/runtime-store.js`, switch "Debug log" under Troubleshooting in the options page

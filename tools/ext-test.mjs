@@ -55,7 +55,8 @@ const server = http.createServer((req, res) => {
   const file = p === '/runtime.so' ? runtimePath : join(root, p);
   if (!file.startsWith(root) && file !== runtimePath) { res.writeHead(403).end(); return; }
   if (!existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
-  const extra = p === '/tests/ext/csp.html' ? { 'content-security-policy': "default-src 'self'; script-src 'self'; frame-src 'self'; object-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'" } : {};
+  const noEval = new URL(req.url, 'http://x').searchParams.get('csp') === 'noeval';   // any page: a CSP that allows scripts but not eval
+  const extra = noEval ? { 'content-security-policy': "script-src 'self' 'unsafe-inline'" } : p === '/tests/ext/csp.html' ? { 'content-security-policy': "default-src 'self'; script-src 'self'; frame-src 'self'; object-src 'none'; connect-src 'self'; style-src 'self' 'unsafe-inline'" } : {};
   // EXT_TEST_VALIDATORS=1: answer like a normal static server (ETag + Last-Modified, 304 on a conditional request), to exercise the extension's download cache;
   // EXT_TEST_REQLOG=1: print every request (and whether it was conditional)
   const st = statSync(file), v = process.env.EXT_TEST_VALIDATORS ? { etag: `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`, 'last-modified': st.mtime.toUTCString() } : {};
@@ -369,6 +370,19 @@ const cspState = await csp.eval(`JSON.stringify({ iframes: document.querySelecto
 const cs = JSON.parse(cspState);
 check('strict-CSP page: Flash still shows (player iframe, or the viewer-button fallback if the CSP refuses it)', (cs.iframes === 1 && cs.placeholders === 0) || (cs.iframes === 0 && cs.placeholders === 1 && /Play Flash in viewer/.test(cs.text)), cspState);
 console.log('   csp page result:', cs.iframes === 1 ? 'iframe loaded despite CSP' : 'fallback placeholder');
+
+// ---- a CSP that allows scripts but forbids eval: ExternalInterface must still work both ways (extension/content/bridge-main.js, eval-free path)
+{
+  const ei = await newTab(`${base}/tests/ext/ei2.html?csp=noeval`);
+  await sleep(9000);
+  const evalState = await ei.eval('window.evalState').catch(() => '');
+  await ei.eval('pageToFlash()').catch(() => {});
+  await sleep(3000);
+  const calls = JSON.parse(await ei.eval('JSON.stringify(window.calls)').catch(() => '[]'));
+  check('no-eval CSP page really refuses eval', evalState === 'EvalError', String(evalState));
+  check('no-eval CSP page: Flash -> page ExternalInterface.call arrives', calls.some((c) => /flash->page pageEcho \["hello",42,true,\{"a":1,"b":\[1,2\]\}\]/.test(c)), calls.join(' | '));
+  check('no-eval CSP page: page -> Flash callbacks return their values', calls.some((c) => /page->flash echo = "flash:hi from page"/.test(c)) && calls.some((c) => /page->flash sum = 42\.5/.test(c)), calls.join(' | '));
+}
 
 // ---- direct .swf navigation goes through the viewer
 const direct = await newTab(`${base}/tests/swf/testsrc.swf`);

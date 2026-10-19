@@ -49,7 +49,8 @@ const server = createServer((req, res) => {
   if (p === '/echo-ref') { refHits.push({ method: req.method, referer: req.headers.referer || '-', origin: req.headers.origin || '-' }); res.writeHead(200, { 'content-type': 'text/plain', 'access-control-allow-origin': '*' }); res.end(`referer=${req.headers.referer || '-'} origin=${req.headers.origin || '-'}`); return; }
   const file = join(root, p);
   if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
-  res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'content-length': statSync(file).size });
+  const csp = new URL(req.url, 'http://x').searchParams.get('csp') === 'noeval' ? { 'content-security-policy': "script-src 'self' 'unsafe-inline'" } : {};   // a CSP that allows scripts but not eval
+  res.writeHead(200, { 'content-type': MIME[extname(file)] || 'application/octet-stream', 'content-length': statSync(file).size, ...csp });
   createReadStream(file).pipe(res);
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));

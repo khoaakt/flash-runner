@@ -4,6 +4,8 @@
 <pre id="log" style="font:12px ui-monospace,monospace"></pre>
 <script>
   window.calls = [];
+  // does this page's CSP allow eval? (tools/ext-test.mjs serves it with a no-eval CSP for ?csp=noeval)
+  window.evalState = (() => { try { eval('1'); return 'allowed'; } catch (e) { return e.name; } })();
   const note = (s) => { calls.push(s); document.getElementById('log').textContent = calls.join('\n'); };
   // Flash -> page: ExternalInterface.call("pageEcho", "hello", 42, true, {a:1,b:[1,2]})
   function pageEcho(s, n, b, o) { note('flash->page pageEcho ' + JSON.stringify([s, n, b, o])); return { ok: true, echoed: s, list: [1, 2, 3] }; }
