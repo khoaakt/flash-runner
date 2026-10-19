@@ -28,7 +28,8 @@ stops and `pepper.js` does it with the real browser APIs. Details: [docs/ARCHITE
 
 ## Screenshots
 
-Flash Player 32.0.0.363 playing real pages in the browser through the extension. The pages belong to their owners and are shown only to demonstrate playback.
+Flash Player 32.0.0.363 playing real pages in the browser through the extension. These are screenshots of the whole browser window (Windows, taken with `tools/window-shot.ps1`),
+with the add-on's own settings tab and the extensions button visible. The pages belong to their owners and are shown only to demonstrate playback.
 
 <table>
   <tr>
@@ -44,8 +45,8 @@ Flash Player 32.0.0.363 playing real pages in the browser through the extension.
     <td><img src="docs/screenshots/chrome-test-flash-player.png" alt="webbrowsertools.com Test Flash Player in Chrome: several movies with Go and Stop buttons" width="400"></td>
   </tr>
   <tr>
-    <td align="center">The same test page in Firefox</td>
-    <td align="center">Five movies on one page in Chrome (the bumblebee animations are from DePaul University)</td>
+    <td align="center">The same test page in Firefox (the striped address bar is Firefox's remote-control indicator: a test script opened the page)</td>
+    <td align="center">A page with five movies in Chrome (the bumblebee animations are from DePaul University)</td>
   </tr>
 </table>
 

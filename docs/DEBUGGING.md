@@ -36,7 +36,7 @@ Debug log on). WebDriver cannot open `moz-extension://` pages itself, so the tes
 
 ## Screenshots of any page
 
-Both browser drivers can open an address of your choosing and save a screenshot of what the extension made of it (the README screenshots were taken this way):
+Both browser drivers can open an address of your choosing and save a screenshot of what the extension made of it. This captures the page only; it proves little to a reader:
 
 ```sh
 node tools/ext-test.mjs --bundled --url "https://example.com/flash.html" --seconds 20 --size 1280x800 --shots /tmp/shots   # custom-before.png; add --clicks "x,y" to click the page first
@@ -44,6 +44,18 @@ node tools/firefox-test.mjs --geckodriver /path/to/geckodriver --url "https://ex
 ```
 
 `--size` is the window size (Chrome's page area is a little smaller than the window). Only open pages whose content you trust: the movie runs, and may make requests, as it would in any browser.
+
+### Whole-window screenshots (Windows)
+
+The README screenshots show the real browser window: tabs, address bar, the extension. `tools/window-shot.ps1` captures one window of a process you name, so a browser of your own is never photographed:
+
+```powershell
+powershell -NoProfile -File tools/window-shot.ps1 -Title "Chrome" -ProcId <pid>[,<pid>...] -Out shot.png
+```
+
+Open a visible browser first and give its process ids: `node tools/ext-test.mjs --bundled --headed --url <address> --seconds 30 --size 1100x780 --hold 20` (`--hold` keeps Chrome open after the
+page's own screenshot; the test browser is the `chrome.exe` whose command line has `--remote-debugging-pipe`), or `node tools/firefox-test.mjs --geckodriver <path> --headed --url <address> --keep-open 1` (the
+`firefox.exe` processes with `-marionette` in their command line). The script raises the window briefly, then reads its own pixels with PrintWindow (a plain screen grab came out blank).
 
 ## Measuring performance
 

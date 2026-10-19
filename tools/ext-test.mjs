@@ -4,7 +4,7 @@
 //     [--cpu]                 CPU profile of every worker (the emulator) -> <shots dir>/worker-N.cpuprofile; it perturbs timing, so use it to attribute, never to time
 //     [--no-shots]            with --page: print the [flash] log lines after the wait and exit (no screenshots, no other checks)
 //     [--url <https://...>]   open any address instead of a page of this repository, wait, and screenshot it (custom-before.png in the shots dir);
-//                             --clicks "x,y;x,y" then clicks the page itself first (page coordinates)
+//                             --clicks "x,y;x,y" then clicks the page itself first (page coordinates); --hold <s> keeps the browser open afterwards
 //     [--size 1280x800]       browser window size (default: Chrome's)
 // Chrome 137+ ignores --load-extension in branded builds; `Extensions.loadUnpacked` over --remote-debugging-pipe
 // with --enable-unsafe-extension-debugging is the supported way to install an unpacked extension for testing.
@@ -221,6 +221,8 @@ if (customPage) {
     }
     await shot('custom-before.png');
     console.log('screenshot', join(shotsDir, 'custom-before.png'));
+    const hold = +arg('--hold', 0);                // keep the browser open this many seconds more, e.g. for tools/window-shot.ps1 to photograph the window
+    if (hold > 0) { console.log('holding the browser open for', hold, 's'); await sleep(hold * 1000); }
     cleanup(); process.exit(0);
   }
   await shot('custom-before.png');
