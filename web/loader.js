@@ -1,6 +1,8 @@
 // One-line embed:  <script type="module" src="/web/loader.js"></script>
 // Replaces <embed>/<object> SWF elements with a canvas driven by the emulated Flash runtime.
 
+import { createFrameServices, watchGamepads } from './frame-services.js';
+
 const WORKER_URL = new URL('./worker.js', import.meta.url);
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent || '');
@@ -29,6 +31,7 @@ export class FlashPlayer {
     if (opts.statusBar !== false) this.wrap.append(this.status);
     if (opts.host) opts.host.append(this.wrap); else el.replaceWith(this.wrap);
     this.listeners = [];
+    this.services = { ...createFrameServices(this), ...(opts.services || {}) };   // what the worker may ask this frame to do (web/frame-services.js)
   }
 
   async start() {
@@ -47,6 +50,7 @@ export class FlashPlayer {
     const pluginBytes = this.opts.pluginBytes || null;
     worker.postMessage({ type: 'boot', log: this.opts.log, aot: this.opts.aot, lir: this.opts.lir, jitIntrinsics: this.opts.jitIntrinsics, jitTrustLoads: this.opts.jitTrustLoads, netCache: this.opts.netCache, wantAudio, assets, pluginBytes, persist: this.opts.persist, language: this.opts.language, memMB: this.opts.memMB, storageName: this.opts.storageName, canvas: off, args, size: this.size, baseUrl: this.opts.baseUrl || document.baseURI, documentUrl: this.opts.pageUrl || location.href, pageBridge: !!this.opts.pageBridge, force2d: !!this.opts.force2d, noSse: this.opts.sse2 === false, trace: !!this.opts.trace, gpu3d: !!this.opts.gpu3d, jit: this.opts.jit, profile: this.opts.profile, fpsLog: !!this.opts.fpsLog, sockBridge: !!this.opts.sockBridge, screen: { w: screen.width, h: screen.height } }, [off]);
     this.bindInput();
+    this.stopGamepads = watchGamepads((pads) => worker.postMessage({ type: 'gamepads', pads }));   // PPB_Gamepad::Sample reads the latest of these
     this.status.textContent = 'starting…';
   }
 
@@ -75,6 +79,7 @@ export class FlashPlayer {
       case 'ready': this.status.textContent = `running (${m.presenter})`; this.opts.onReady?.(m); break;
       case 'stats': this.status.textContent = `${m.fps.toFixed(0)} fps · ${m.calls} PPB calls`; break;
       case 'page': this.pageRequest(m); break;
+      case 'svc': this.service(m); break;
       case 'sock': this.opts.sockBridge?.(m.msg); break;
       case 'invoke-result': { const r = this.invocations?.get(m.id); this.invocations?.delete(m.id); r?.(m); break; }
       case 'plugin-message': this.opts.onMessage?.(m.value); break;
@@ -191,6 +196,14 @@ export class FlashPlayer {
     } else if (doc.fullscreenElement) doc.exitFullscreen();
   }
   postMessage(v) { this.worker.postMessage({ type: 'message', value: v }); }
+  /** Worker -> this frame: run services[m.op](m.args, { active }) and answer with { ok, value | error }; id 0 = fire and forget. */
+  service(m) {
+    const answer = (r) => { if (m.id) this.worker?.postMessage({ type: 'svc-reply', id: m.id, ...r }); };
+    const fn = this.services[m.op];
+    if (!fn) return answer({ ok: false, error: 'no such service: ' + m.op });
+    const ctx = { active: !!navigator.userActivation?.isActive };
+    Promise.resolve().then(() => fn.call(this, m.args || {}, ctx)).then((value) => answer({ ok: true, value }), (e) => answer({ ok: false, error: String(e && e.message || e) }));
+  }
   /** Worker -> embedding page scripting request (opts.pageBridge(msg) -> Promise<reply>); id 0 = fire and forget. */
   pageRequest(m) {
     const bridge = this.opts.pageBridge;

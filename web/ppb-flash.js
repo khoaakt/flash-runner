@@ -279,7 +279,24 @@ export function buildFlash(host) {
   };
   impl.PPB_TextInput = { SetTextInputType() {}, UpdateCaretPosition() {}, CancelCompositionText() {}, UpdateSurroundingText() {}, SelectionChanged() {} };
   impl.PPB_MouseLock = { LockMouse() { return PP_ERROR_NOTSUPPORTED; }, UnlockMouse() {} };
-  impl.PPB_Gamepad = { Sample(tid, instance, p) { host.w32(p, 0); } };
+  // PP_GamepadsSampleData (1896 bytes): u32 length @0, then 4 items of 472 bytes at 8: u32 axes_length @0, f32 axes[16] @4, u32 buttons_length @68,
+  // f32 buttons[32] @72, f64 timestamp @200, u16 id[128] @208, i32 connected @464. host.gamepads is the frame's latest sample (see frame-services.js).
+  impl.PPB_Gamepad = {
+    Sample(tid, instance, p) {
+      const pads = host.gamepads || [];
+      host.zeroBytes(p, 1896);
+      host.w32(p, pads.length);
+      pads.forEach((g, i) => {
+        const o = p + 8 + i * 472;
+        host.w32(o, g.axes.length); g.axes.forEach((v, k) => host.wf32(o + 4 + k * 4, v));
+        host.w32(o + 68, g.buttons.length); g.buttons.forEach((v, k) => host.wf32(o + 72 + k * 4, v));
+        host.wf64(o + 200, (g.timestamp || 0) / 1000);
+        const id = String(g.id).slice(0, 127);
+        for (let k = 0; k < id.length; k++) host.bytesW(o + 208 + k * 2, 2).set([id.charCodeAt(k) & 255, id.charCodeAt(k) >> 8]);
+        host.w32(o + 464, 1);
+      });
+    },
+  };
   const CURSORS = ['default', 'crosshair', 'pointer', 'text', 'wait', 'help', 'e-resize', 'ne-resize', 'nw-resize', 'n-resize', 'se-resize', 'sw-resize', 's-resize', 'w-resize', 'ns-resize', 'ew-resize', 'nesw-resize', 'nwse-resize', 'col-resize', 'row-resize', 'n-resize', 'e-resize', 's-resize', 'w-resize', 'move', 'text', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'default', 'none'];
   impl.PPB_CursorControl = {
     SetCursor(tid, instance, type, image, hot) { host.onCursor(type === 38 ? 'none' : CURSORS[type] || 'default'); return 1; },

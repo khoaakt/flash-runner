@@ -57,6 +57,12 @@ const yieldToEventLoop = () => new Promise((r) => { yieldPending = r; yieldChann
 const sockBridge = new BridgeSockets((msg) => post('sock', { msg }));          // raw TCP through the native helper (see player.js)
 const pageWaiters = new Map();
 let pageSeq = 0;
+// Requests to the player frame's main thread for what a worker cannot do itself (pickers, camera, print): see web/frame-services.js.
+const svcWaiters = new Map();
+let svcSeq = 0;
+const frameService = {
+  request: (op, args = {}) => new Promise((resolve) => { const id = ++svcSeq; svcWaiters.set(id, resolve); post('svc', { id, op, args }); }),   // resolves { ok, value | error }
+};
 const pageBridge = {
   request: (msg) => new Promise((resolve) => { const id = ++pageSeq; pageWaiters.set(id, resolve); post('page', { id, msg }); }),
   post: (msg) => post('page', { id: 0, msg }),
@@ -130,6 +136,7 @@ async function boot(m) {
     gpu3d: !!m.gpu3d,                                   // PPB_Flash::GetSetting: advertise Stage3D / GPU compositing
     onSwap: (i, glCanvas, w, h) => { presenter.presentCanvas(glCanvas, w, h); countFrame(); },   // PPB_Graphics3D::SwapBuffers
     baseUrl, documentUrl, trace: !!m.trace, screenSize: m.screen,
+    service: frameService,
     page: m.pageBridge ? pageBridge : null, profile: m.profile, stallLog: !!m.fpsLog || !!m.profile, sockets: m.sockBridge ? sockBridge : null, sampleRate: audioSink?.rate || 48000, get audioSink() { return audioSink; },
     yield: yieldToEventLoop,
     onMessage: (i, v) => post('plugin-message', { value: typeof v === 'object' ? String(v) : v }),
@@ -183,6 +190,8 @@ self.onmessage = (e) => {
   else if (m.type === 'menu-result' && pep) pep.menuResult(m.id, m.selected);
   else if (m.type === 'clipboard-text' && pep) pep.clipboardText = String(m.text ?? '');
   else if (m.type === 'sock-in') sockBridge.handle(m.msg);
+  else if (m.type === 'svc-reply') { const w = svcWaiters.get(m.id); svcWaiters.delete(m.id); w?.(m); }
+  else if (m.type === 'gamepads' && pep) pep.gamepads = m.pads;
   else if (m.type === 'page-reply') { const w = pageWaiters.get(m.id); pageWaiters.delete(m.id); w?.(m.reply); }
   else if (m.type === 'invoke' && pep) pep.invokeInstance(instance, m.name, m.args || []).then((r) => post('invoke-result', { id: m.id, ...r }), (e) => post('invoke-result', { id: m.id, ok: false, exception: String(e) }));
   else if (m.type === 'audio') { audioSink = m.sab ? new RingSink(m.sab, m.rate) : new MessageSink(m.rate); audioReadyResolve(); }

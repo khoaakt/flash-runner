@@ -2,6 +2,7 @@
 //   node tools/ext-test.mjs [--runtime path/to/libpepflashplayer.so] [--seconds 12] [--shots dir] [--headed]
 //     [--setting key=<json>]  (repeatable) extra chrome.storage.local values, e.g. jitTrustLoads=false; only the keys of runtime-store.js DEFAULTS reach the player
 //     [--cpu]                 CPU profile of every worker (the emulator) -> <shots dir>/worker-N.cpuprofile; it perturbs timing, so use it to attribute, never to time
+//     [--expect-pass]         with --page: the movie must have painted its green PASS square (tests/swf-src probes) by the final screenshot
 //     [--no-shots]            with --page: print the [flash] log lines after the wait and exit (no screenshots, no other checks)
 //     [--url <https://...>]   open any address instead of a page of this repository, wait, and screenshot it (custom-before.png in the shots dir);
 //                             --clicks "x,y;x,y" then clicks the page itself first (page coordinates); --hold <s> keeps the browser open afterwards
@@ -14,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
+import { probeResult } from './lib/png-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i < 0 ? d : (process.argv[i + 1] ?? true); };
@@ -331,6 +333,7 @@ if (customPage) {
   if (frameEval) console.log('frame post-eval =>', JSON.stringify(await inFrame('window.__fe')));
   if (evalPost) console.log('post-eval =>', JSON.stringify(await cp.eval(evalPost).catch((e) => 'ERR ' + e.message)));
   await shot('custom.png');
+  if (process.argv.includes('--expect-pass')) { const r = probeResult(join(shotsDir, 'custom.png')); check('the movie painted its PASS square', r.pass, JSON.stringify(r)); }
   if (process.argv.includes('--expect-accelerators')) {
     check('packaged AOT installed into the real plugin', logs.some((l) => /\[aot\] plugin base=.*installed=[1-9]/.test(l)), logs.slice(-20).join('\n'));
     check('captured real NanoJIT method replaced by wasm', logs.some((l) => /LIR->wasm installed method=/.test(l)), logs.slice(-20).join('\n'));

@@ -417,5 +417,23 @@ check('resource ids start above the reserved loops (1 main, 2 audio)', pep.nextR
   let threw2 = false; try { pep.u32(SIZE); } catch { threw2 = true; }
   check('out-of-range guest pointers throw instead of touching host memory', threw && threw2);
 }
+// ---- Gamepad: PP_GamepadsSampleData is 1896 bytes (u32 length, 4 items of 472): the layout is pinned by ppb_gamepad.h
+{
+  const p = pep.alloc(1896);
+  pep.bytesW(p, 1896).fill(0xee);                                     // stale bytes the sample must overwrite
+  pep.gamepads = undefined;
+  call('PPB_Gamepad', 'Sample', MAIN, 1, p);
+  check('no pads: length 0 and the rest zeroed', pep.u32(p) === 0 && pep.u32(p + 8) === 0 && pep.u32(p + 8 + 464) === 0);
+  pep.gamepads = [{ id: 'Pad A', timestamp: 2500, axes: [0.5, -0.25], buttons: [1, 0, 0.5] }, { id: 'B', timestamp: 0, axes: [], buttons: [] }];
+  call('PPB_Gamepad', 'Sample', MAIN, 1, p);
+  const it = (i) => p + 8 + i * 472;
+  check('one item per pad', pep.u32(p) === 2);
+  check('axes and buttons land at their offsets', pep.u32(it(0)) === 2 && pep.f32(it(0) + 4) === 0.5 && pep.f32(it(0) + 8) === -0.25
+    && pep.u32(it(0) + 68) === 3 && pep.f32(it(0) + 72) === 1 && pep.f32(it(0) + 80) === 0.5);
+  check('timestamp is in seconds, connected is 1', pep.f64(it(0) + 200) === 2.5 && pep.u32(it(0) + 464) === 1 && pep.u32(it(1) + 464) === 1);
+  const id = [...pep.bytes(it(0) + 208, 12)];
+  check('id is UTF-16 and NUL terminated', id[0] === 80 && id[1] === 0 && id[2] === 97 && id[8] === 65 && id[9] === 0 && id[10] === 0 && id[11] === 0, JSON.stringify(id));
+  check('unused pad slots stay zero', pep.u32(it(2) + 464) === 0 && pep.u32(it(3)) === 0);
+}
 console.log(failed ? `\n${failed} FAILED` : '\nall ok');
 process.exit(failed ? 1 : 0);

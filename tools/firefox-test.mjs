@@ -5,6 +5,7 @@
 //                               [--seconds 15] [--shots dir] [--headed] [--setting key=<json>]
 //                               [--clicks "x,y;x,y"] [--keys "a,b,Enter"]   real mouse clicks (page coordinates) and key presses after the first wait
 //                               [--url <https://...>] [--size 1280x800]     a page elsewhere instead of one of this repository; window size
+//                               [--page-eval <js>] [--frame-eval <js>] [--expect-pass]         JS run inside the player frame after the wait; the movie must have painted its PASS square
 //                               [--keep-open [minutes]] [--also page,page]   with --headed: after the checks leave the window open (default 30 minutes, or until it
 //                                                                            is closed) with the add-on installed and --also pages in more tabs, to try it by hand
 // Needs: Firefox 128 or newer and geckodriver (https://github.com/mozilla/geckodriver/releases). Exit status 0 when every check passed.
@@ -13,6 +14,7 @@ import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readF
 import { createServer } from 'node:http';
 import { extname, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { probeResult } from './lib/png-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i < 0 ? d : (process.argv[i + 1] ?? true); };
@@ -26,6 +28,7 @@ const shots = resolve(arg('--shots', join(root, 'tests/out')));
 const headed = process.argv.includes('--headed');
 const clicks = String(arg('--clicks', '')), keys = String(arg('--keys', ''));
 const openUrl = arg('--url', null), size = arg('--size', null);
+const pageEval = arg('--page-eval', null), frameEval = arg('--frame-eval', null), expectPass = process.argv.includes('--expect-pass');
 const keepOpenArg = arg('--keep-open', null), keepOpen = keepOpenArg !== null;
 const keepMinutes = keepOpen ? (Number.isFinite(+keepOpenArg) && +keepOpenArg > 0 ? +keepOpenArg : 30) : 0;
 const also = String(arg('--also', '')).split(',').filter(Boolean);
@@ -73,13 +76,14 @@ const prefs = {
   'devtools.console.stdout.content': true,       // page and worker console output goes to Firefox's stdout, which geckodriver forwards
   'media.autoplay.default': 0,
   'xpinstall.signatures.required': false,
+  'dom.gamepad.test.enabled': true,             // navigator.requestGamepadServiceTest(): virtual pads for tests/ext/gamepad.html
 };
 const session = await wd('POST', '/session', { capabilities: { alwaysMatch: { browserName: 'firefox', acceptInsecureCerts: true,
   'moz:firefoxOptions': { ...(firefox ? { binary: firefox } : {}), args: headed ? [] : ['-headless'], prefs, log: { level: 'info' } } } } });
 sid = session.sessionId;
 console.log('Firefox', session.capabilities.browserVersion, '| geckodriver session', sid.slice(0, 8));
 const S = `/session/${sid}`;
-const exec = async (script, args = []) => wd('POST', `${S}/execute/async`, { script: `const done = arguments[arguments.length - 1]; Promise.resolve((async () => { ${script} })()).then((v) => done(v), (e) => done({ __error: String(e && e.stack || e) }));`, args });
+const exec = async (script, args = []) => wd('POST', `${S}/execute/async`, { script: `const done = arguments[arguments.length - 1]; Promise.resolve((async () => { ${script} })()).then((v) => done(v), (e) => done({ __error: String(e && e.message ? e.name + ': ' + e.message : e) }));`, args });
 
 try {
   const id = await wd('POST', `${S}/moz/addon/install`, { path: addon, temporary: true });
@@ -117,6 +121,14 @@ try {
     console.log('   /echo-ref saw', JSON.stringify(refHits));
     check('Referer and Origin of the movie requests are those of the embedding page', refHits.every((h) => h.referer.startsWith(want) && h.origin === base), JSON.stringify(refHits));
   }
+  if (pageEval) console.log('   page eval =>', JSON.stringify(await exec(pageEval)));
+  if (frameEval) {   // run code in the player frame (a cross-origin iframe of the add-on): switch into it, run, switch back
+    const el = await wd('POST', `${S}/element`, { using: 'css selector', value: 'iframe[data-flash-runner]' });
+    await wd('POST', `${S}/frame`, { id: el });
+    const r = await exec(frameEval);
+    await wd('POST', `${S}/frame/parent`, {});
+    console.log('   frame eval =>', JSON.stringify(r));
+  }
   if (clicks || keys) {
     const KEY = { Enter: '\uE007', Backspace: '\uE003', Tab: '\uE004', Escape: '\uE00C', ArrowLeft: '\uE012', ArrowRight: '\uE014', Space: ' ' };
     const mouse = clicks.split(';').filter(Boolean).flatMap((c) => { const [x, y] = c.split(',').map(Number); return [{ type: 'pointerMove', x, y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }, { type: 'pause', duration: 80 }, { type: 'pointerUp', button: 0 }, { type: 'pause', duration: 300 }]; });
@@ -129,6 +141,7 @@ try {
   mkdirSync(shots, { recursive: true });
   const png = await wd('GET', `${S}/screenshot`);
   const shotFile = join(shots, 'firefox-page.png'); writeFileSync(shotFile, Buffer.from(png, 'base64'));
+  if (expectPass) { const r = probeResult(shotFile); check('the movie painted its PASS square', r.pass, JSON.stringify(r)); }
   console.log('   screenshot', shotFile);
   const log = gdLog.join('').split('\n').filter((l) => /\[flash\]|PPP_InitializeModule|JavaScript error|Error:/i.test(l));
   check('the emulated Flash runtime initialised', log.some((l) => /PPP_InitializeModule -> 0/.test(l)), log.slice(-8).join('\n'));
