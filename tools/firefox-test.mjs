@@ -4,6 +4,7 @@
 //   node tools/firefox-test.mjs --geckodriver <path> [--firefox <firefox binary>] [--addon dist/firefox] [--page tests/ext/compat.html]
 //                               [--seconds 15] [--shots dir] [--headed] [--setting key=<json>]
 //                               [--clicks "x,y;x,y"] [--keys "a,b,Enter"]   real mouse clicks (page coordinates) and key presses after the first wait
+//                               [--url <https://...>] [--size 1280x800]     a page elsewhere instead of one of this repository; window size
 //                               [--keep-open [minutes]] [--also page,page]   with --headed: after the checks leave the window open (default 30 minutes, or until it
 //                                                                            is closed) with the add-on installed and --also pages in more tabs, to try it by hand
 // Needs: Firefox 128 or newer and geckodriver (https://github.com/mozilla/geckodriver/releases). Exit status 0 when every check passed.
@@ -24,6 +25,7 @@ const seconds = +arg('--seconds', 15);
 const shots = resolve(arg('--shots', join(root, 'tests/out')));
 const headed = process.argv.includes('--headed');
 const clicks = String(arg('--clicks', '')), keys = String(arg('--keys', ''));
+const openUrl = arg('--url', null), size = arg('--size', null);
 const keepOpenArg = arg('--keep-open', null), keepOpen = keepOpenArg !== null;
 const keepMinutes = keepOpen ? (Number.isFinite(+keepOpenArg) && +keepOpenArg > 0 ? +keepOpenArg : 30) : 0;
 const also = String(arg('--also', '')).split(',').filter(Boolean);
@@ -104,7 +106,8 @@ try {
 
   // the movie page, in the first tab
   await wd('POST', `${S}/window`, { handle: mainTab });
-  await wd('POST', `${S}/url`, { url: `${base}/${page}` });
+  if (size) { const [w, h] = String(size).split('x').map(Number); await wd('POST', `${S}/window/rect`, { width: w, height: h }); }
+  await wd('POST', `${S}/url`, { url: openUrl || `${base}/${page}` });
   await sleep(seconds * 1000);
   const state = await exec(`const f = [...document.querySelectorAll('iframe[data-flash-runner]')]; return { frames: f.length, src: f[0] && f[0].src, embeds: document.querySelectorAll('embed,object').length, ready: window.__flashRunnerReady || null };`);
   check('the Flash element was replaced by a player iframe', state && state.frames >= 1, JSON.stringify(state));

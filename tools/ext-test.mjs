@@ -3,6 +3,9 @@
 //     [--setting key=<json>]  (repeatable) extra chrome.storage.local values, e.g. jitTrustLoads=false; only the keys of runtime-store.js DEFAULTS reach the player
 //     [--cpu]                 CPU profile of every worker (the emulator) -> <shots dir>/worker-N.cpuprofile; it perturbs timing, so use it to attribute, never to time
 //     [--no-shots]            with --page: print the [flash] log lines after the wait and exit (no screenshots, no other checks)
+//     [--url <https://...>]   open any address instead of a page of this repository, wait, and screenshot it (custom-before.png in the shots dir);
+//                             --clicks "x,y;x,y" then clicks the page itself first (page coordinates)
+//     [--size 1280x800]       browser window size (default: Chrome's)
 // Chrome 137+ ignores --load-extension in branded builds; `Extensions.loadUnpacked` over --remote-debugging-pipe
 // with --enable-unsafe-extension-debugging is the supported way to install an unpacked extension for testing.
 import { spawn } from 'node:child_process';
@@ -19,7 +22,9 @@ const seconds = +arg('--seconds', 12);
 const shots = arg('--shots', null);
 const shotsDir = shots || join(root, 'tests/out');   // screenshots land in the git-ignored tests/out unless --shots says otherwise
 const headed = process.argv.includes('--headed');
-const customPage = arg('--page', null);
+const openUrl = arg('--url', null);                // a page elsewhere: the extension plays whatever Flash it finds
+const customPage = arg('--page', null) || (openUrl ? '(url)' : null);
+const windowSize = arg('--size', null);
 const extraSettings = {};                          // --setting key=<json> (repeatable): added to the chrome.storage.local seeds, e.g. --setting jitTrustLoads=false
 process.argv.forEach((a, i) => { if (a === '--setting') { const kv = process.argv[i + 1] || ''; const j = kv.indexOf('='); extraSettings[kv.slice(0, j)] = JSON.parse(kv.slice(j + 1)); } });
 const cpuProfile = process.argv.includes('--cpu');   // CPU profile of every worker (the emulator) -> <shots dir>/worker-N.cpuprofile; it perturbs timing: attribution runs only
@@ -77,7 +82,7 @@ const sockQuery = sockPort || (noHelper ? 59999 : 0);     // a high port nothing
 const chrome = spawn(CHROME, [
   `--user-data-dir=${profileDir}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging',
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required', '--enable-unsafe-webgpu', `--use-angle=${ANGLE}`, '--ignore-gpu-blocklist',
-  ...(headed ? [] : ['--headless=new']), 'about:blank',
+  ...(windowSize ? [`--window-size=${windowSize.replace('x', ',')}`] : []), ...(headed ? [] : ['--headless=new']), 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 const cleanup = () => { if (process.env.EXT_TEST_LOGS) console.log('--- console (' + logs.length + ' lines) ---\n' + logs.map((l) => String(l).slice(0, 220)).join('\n')); try { chrome.kill('SIGKILL'); } catch {} server.close(); try { sockServer?.close(); } catch {} };
 process.on('exit', cleanup);
@@ -201,13 +206,23 @@ if (viewerFile) {
 }
 
 if (customPage) {
-  const cp = await newTab(`${base}/${customPage}${sockQuery ? (customPage.includes('?') ? '&' : '?') + 'sock=' + sockQuery : ''}`);
+  const cp = await newTab(openUrl || `${base}/${customPage}${sockQuery ? (customPage.includes('?') ? '&' : '?') + 'sock=' + sockQuery : ''}`);
   await sleep(seconds * 1000);
   await stopProfiles();
   if (noShots) { console.log(logs.filter((l) => /\[flash\]|EXC/.test(l)).join('\n')); cleanup(); process.exit(0); }
   mkdirSync(shotsDir, { recursive: true });
   const shot = async (name) => { const png = await cp.send('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(shotsDir, name), Buffer.from(png.data, 'base64')); };
   if (process.argv.includes('--twice')) { await cp.send('Page.navigate', { url: 'about:blank' }); await sleep(1500); await cp.send('Page.navigate', { url: `${base}/${customPage}${sockQuery ? '?sock=' + sockQuery : ''}` }); await sleep(seconds * 1000); }
+  if (openUrl) {                                   // another site: optional clicks on the page itself (e.g. a cookie banner), one screenshot, done
+    for (const c of String(clicks).split(';').filter(Boolean)) {
+      const [x, y] = c.split(',').map(Number);
+      for (const type of ['mousePressed', 'mouseReleased']) await cp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+      await sleep(800);
+    }
+    await shot('custom-before.png');
+    console.log('screenshot', join(shotsDir, 'custom-before.png'));
+    cleanup(); process.exit(0);
+  }
   await shot('custom-before.png');
   if (sockPort) {                                 // sock.swf reports what happened through navigateToURL: the tab Chrome opened for it carries the result
     const { targetInfos } = await send('Target.getTargets');

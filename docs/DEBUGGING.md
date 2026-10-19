@@ -34,6 +34,17 @@ The screenshot lands in `--shots` (default `tests/out`). `--headed` shows the wi
 Debug log on). WebDriver cannot open `moz-extension://` pages itself, so the test opens the settings page from Firefox's privileged context (`geckodriver --allow-system-access`).
 `node tools/firefox-manifest-test.mjs` checks the Firefox manifest without a browser and runs in CI.
 
+## Screenshots of any page
+
+Both browser drivers can open an address of your choosing and save a screenshot of what the extension made of it (the README screenshots were taken this way):
+
+```sh
+node tools/ext-test.mjs --bundled --url "https://example.com/flash.html" --seconds 20 --size 1280x800 --shots /tmp/shots   # custom-before.png; add --clicks "x,y" to click the page first
+node tools/firefox-test.mjs --geckodriver /path/to/geckodriver --url "https://example.com/flash.html" --size 1280x800 --shots /tmp/shots
+```
+
+`--size` is the window size (Chrome's page area is a little smaller than the window). Only open pages whose content you trust: the movie runs, and may make requests, as it would in any browser.
+
 ## Measuring performance
 
 Only numbers taken in Chrome through the extension describe the extension. Timings from `web/flash-smoke.mjs` under Node differ, and on Windows

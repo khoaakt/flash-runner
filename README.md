@@ -3,7 +3,7 @@
 Play Flash (`.swf`) in Chrome without a Flash plugin. flash-runner runs Adobe's own Flash Player inside a browser tab by emulating a 32-bit
 Linux PC in WebAssembly. You supply the Flash Player file; this repository does not contain it.
 
-> Experimental, and not affiliated with Adobe or HARMAN. Flash is end-of-life and the versions this runs have known security bugs, so do not
+> Not affiliated with Adobe or HARMAN. Flash is end-of-life and the versions this runs have known security bugs, so do not
 > open content you do not trust. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licensing.
 
 How it fits together:
@@ -25,6 +25,29 @@ flowchart LR
 
 The plugin believes it runs on a Linux PC. Whenever it asks its "browser" for something (draw this, play that, fetch a URL), the emulator
 stops and `pepper.js` does it with the real browser APIs. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Screenshots
+
+Flash Player 32.0.0.363 playing real pages in the browser through the extension. The pages belong to their owners and are shown only to demonstrate playback.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/chrome-ultrasounds.png" alt="An old Flash site (Ultra Sounds) in Chrome: photo, scrolling text and menu buttons" width="400"></td>
+    <td><img src="docs/screenshots/chrome-flash-test.png" alt="A Flash test page in Chrome: a flame-torch animation" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center">An old Flash site in Chrome: image, scrolling text field, menu</td>
+    <td align="center">A Flash test page in Chrome: an animation</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/firefox-flash-test.png" alt="The same Flash test page in Firefox" width="400"></td>
+    <td><img src="docs/screenshots/chrome-test-flash-player.png" alt="webbrowsertools.com Test Flash Player in Chrome: several movies with Go and Stop buttons" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center">The same test page in Firefox</td>
+    <td align="center">Five movies on one page in Chrome (the bumblebee animations are from DePaul University)</td>
+  </tr>
+</table>
 
 ## What you need
 
