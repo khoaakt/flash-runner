@@ -158,7 +158,12 @@ try {
   mkdirSync(shots, { recursive: true });
   const png = await wd('GET', `${S}/screenshot`);
   const shotFile = join(shots, 'firefox-page.png'); writeFileSync(shotFile, Buffer.from(png, 'base64'));
-  if (expectPass) { const r = probeResult(shotFile); check('the movie painted its PASS square', r.pass, JSON.stringify(r)); }
+  if (expectPass) {   // a movie can start late on a slow machine (a slow start was seen to paint 6 s after the wait): look again for up to 8 s before failing
+    let r = probeResult(shotFile), late = 0;
+    while (!r.pass && late < 8000) { await sleep(2000); late += 2000; writeFileSync(shotFile, Buffer.from(await wd('GET', `${S}/screenshot`), 'base64')); r = probeResult(shotFile); }
+    check('the movie painted its PASS square', r.pass, JSON.stringify(r));
+    if (late) console.log(`   (the square was ${r.pass ? 'found' : 'still missing'} ${late / 1000} s after the wait)`);
+  }
   console.log('   screenshot', shotFile);
   if (withSockets) {
     const port = sockServer.address().port, all = gdLog.join('');
