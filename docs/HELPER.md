@@ -4,6 +4,27 @@
 the user's machine opens it instead (`native/helper`, one Go binary). Chrome starts it through native messaging, and only this extension's
 id may talk to it.
 
+The path of one connection:
+
+```mermaid
+sequenceDiagram
+    participant F as Flash (Socket, XMLSocket)
+    participant W as Worker: ppb-sockets.js
+    participant X as Extension: native-sockets.js
+    participant H as flash-helper (Go, native)
+    participant S as Game server
+    F->>W: connect(host, port)
+    W->>X: request, through socket-bridge.js
+    X->>H: message over chrome.runtime.connectNative
+    Note over H: refuses loopback, private and link-local<br/>addresses unless allowed
+    H->>S: open the TCP connection
+    S-->>H: bytes
+    H-->>X: data events (JSON, base64 payload)
+    X-->>W: events
+    W-->>F: the data arrives
+    Note over F,S: Flash first fetches a socket policy file (port 843, then the target port)<br/>through this same path, so its own security rules stay in force
+```
+
 ## Rules it enforces
 
 It refuses loopback, private and link-local destinations unless `~/.flash-runner/sockets.json` contains `{"allowPrivate": true}`. The same file

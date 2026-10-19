@@ -8,6 +8,23 @@
 | LIR → wasm | Real Flash .363 hooks, validated integer and nested conditional slices, bounded receiver effects, exact-profile loops, and audited Number identity/negation/add/sub/mul/div with native x87 returns | General loops, arbitrary heap/runtime calls, exceptions, OSR and broader floating/SIMD operations remain native |
 | Static x86 → wasm | Portable v2 symbolic relocations, metadata-seeded ELF function graphs, exact-image selection and automatic installation before plugin initialization | Complete-plugin coverage and arbitrary ELF relocation/linking |
 
+Two of the layers, as flows. Both end in "run the original code" whenever something is not proven or does not match:
+
+```mermaid
+flowchart TD
+    nano["Flash's own JIT (NanoJIT)<br/>assembles an AS3 method"] --> cap["the worker captures it<br/>(the original code still runs once)"]
+    cap --> ver{"does the verifier prove<br/>every effect of the method?"}
+    ver -->|yes| lir["install the wasm replacement (LIR)"]
+    ver -->|no| orig["keep the original native code,<br/>run by the emulator"]
+```
+
+```mermaid
+flowchart LR
+    load["plugin file loaded"] --> hash{"SHA-256 matches a<br/>packaged AOT image?"}
+    hash -->|yes| aot["install the precompiled wasm for the plugin's<br/>startup code, before the plugin initializes"]
+    hash -->|no| plain["interpret and JIT as usual"]
+```
+
 These are distinct layers. The worker now observes the verified compiler path in 32.0.0.363 and
 replaces **only audited integer methods and bounded receiver-field effects**. This is real but partial replacement,
 not a complete NanoJIT implementation. Unsupported methods keep their original native code and

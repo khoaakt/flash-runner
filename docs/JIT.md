@@ -18,6 +18,24 @@ web/emu.js      host side: compiles modules, parks the functions in the emulator
 
 ## 1. Tiering and the dispatcher (`run.rs`)
 
+In one picture:
+
+```mermaid
+flowchart TD
+    start["next x86 block"] --> known{"compiled region<br/>for this address?"}
+    known -->|yes| run["call the wasm region"]
+    known -->|no| interp["interpret the block<br/>and count it"]
+    interp --> hot{"run 100 times?"}
+    hot -->|yes| build["build a region:<br/>translate the hot blocks to wasm,<br/>JavaScript compiles it and<br/>adds it to the function table"]
+    hot -->|no| next["continue with the next block"]
+    build --> next
+    run --> next
+    smc["the guest rewrites code<br/>(Flash patches its own JIT output)"] -.->|"drop the affected regions;<br/>no recompile for 200 ms"| known
+```
+
+A region is built from hot blocks reachable by direct jumps that are not already part of another region (at most 96 blocks). The details follow.
+
+
 * `emu_set_jit(N)`: `0` = off (default, pure interpreter), `1` = translate every block the first time it is
   seen (testing; also decodes successors eagerly so multi-block regions get exercised), `N` = after a block has
   been interpreted N times. **Recommended default: 100** (the curve is flat from 25 to 400, see §9).

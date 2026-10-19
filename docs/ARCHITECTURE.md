@@ -8,6 +8,33 @@ docs/REA-FINDINGS.md).
 
 ## Layers
 
+```mermaid
+flowchart TB
+    subgraph tab["Browser tab"]
+        loader["web/loader.js<br/>swaps embed/object for a canvas"]
+        subgraph worker["Worker"]
+            pepper["web/pepper.js and ppb-*.js<br/>the PPB_* interfaces, in JavaScript"]
+            subgraph wasm["emu.wasm (crates/emu)"]
+                cpu["x86 interpreter and wasm JIT"]
+                os["Linux personality: syscalls,<br/>threads, memory, file system"]
+                subgraph guest["Guest: runs inside the emulator"]
+                    ld["ld.so and glibc"]
+                    ph["pepper-host<br/>(our small C program)"]
+                    plugin["libpepflashplayer.so"]
+                end
+            end
+        end
+    end
+    loader --> pepper
+    plugin -->|"PPB_* call"| ph
+    ph -->|"int 0x82"| cpu
+    cpu -->|"hypercall event"| pepper
+```
+
+Read it from the outside in: the page gets a canvas from `loader.js`; the worker holds the emulator and the JavaScript side of the plugin's
+interfaces; inside the emulator the Flash plugin runs like a normal Linux program.
+
+
 1. `crates/emu` — x86-32 user-mode emulator + Linux personality (Rust -> wasm32)
    - `cpu.rs`/`int.rs`/`fpu.rs`/`sse.rs`: IA-32 interpreter on iced-x86 decoder (block cache)
    - `jit*.rs`/`wasm_emit.rs`/`run.rs`: tiered wasm JIT for hot blocks (design and measurements: docs/JIT.md)
@@ -18,6 +45,29 @@ docs/REA-FINDINGS.md).
    tables; each PPB call becomes `int 0x82` to the embedder.
 3. `web/` — JS embedder: Pepper (PPB_*) semantics on browser APIs, WebGPU presenter, loader that swaps
    `<embed>`/`<object>` for a canvas.
+
+## One call from the plugin to the browser
+
+Every `PPB_*` function the plugin calls ends in a stub of `pepper-host` that executes `int 0x82`. The emulator stops, `run()` returns a
+HYPER event, and `pepper.js` runs the matching JavaScript:
+
+```mermaid
+sequenceDiagram
+    participant P as Flash Player (guest)
+    participant H as pepper-host stub (guest)
+    participant E as emu.wasm
+    participant J as pepper.js
+    participant B as Browser API
+    P->>H: PPB_Graphics2D::Flush(...)
+    H->>E: int 0x82, method id in a register
+    E-->>J: run() returns a HYPER event
+    Note over J: reads the arguments from guest memory
+    J->>B: do the work (draw, fetch, ...)
+    B-->>J: result
+    J->>E: write the return value, resume
+    E-->>P: the call returns
+    Note over J,E: If the work is asynchronous the guest thread is parked<br/>and resumed when the promise settles
+```
 
 ## Milestone ladder
 - M1 interpreter runs static+dynamic glibc programs  <- done (the full user-mode i386 integer ISA, including the
@@ -53,6 +103,24 @@ Observed by tracing a real 32.0.0.363 build (`web/flash-smoke.mjs --trace`) and 
   allowed with `always` (`tests/ext/ei2.html`, `ei-never.html`, `ei-cross*.html`).
 - Limits: pages whose CSP forbids `eval` cannot receive `ExecuteScript`; raw Flash sockets are not available inside the emulator (it has no
   network stack); the extension provides them through the native socket helper (see [HELPER.md](HELPER.md)).
+
+The same path carries the page scripting calls. In the extension a script request travels worker, `player.js`, parent page:
+
+```mermaid
+sequenceDiagram
+    participant F as Flash (worker)
+    participant W as pepper.js (worker)
+    participant PL as player.js (player frame)
+    participant BR as bridge-main.js (page, MAIN world)
+    F->>W: ExecuteScript("... fn(args) ...")
+    W->>PL: request message
+    PL->>BR: postMessage to the parent page
+    Note over PL,BR: connected only if allowScriptAccess allows it
+    Note over BR: indirect eval in the page
+    BR-->>PL: result (an XML string)
+    PL-->>W: reply
+    W-->>F: value
+```
 
 ## Raw sockets
 Flash 32 opens sockets through `PPB_TCPSocket_Private;0.5` (plus `PPB_NetAddress` / `PPB_NetAddress_Private` for addresses; the public

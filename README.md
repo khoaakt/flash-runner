@@ -6,10 +6,25 @@ Linux PC in WebAssembly. You supply the Flash Player file; this repository does 
 > Experimental, and not affiliated with Adobe or HARMAN. Flash is end-of-life and the versions this runs have known security bugs, so do not
 > open content you do not trust. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licensing.
 
+How it fits together:
+
+```mermaid
+flowchart LR
+    page["Web page with<br/>a Flash movie"] -->|the extension swaps the embed<br/>for a player| worker
+    subgraph worker["Browser worker"]
+        direction TB
+        flash["Adobe Flash Player<br/>(the file you supply)"]
+        emu["emu.wasm: an x86 CPU and<br/>a small Linux, written in Rust"]
+        host["pepper.js: answers<br/>Flash's requests"]
+        flash <-->|runs on| emu
+        emu <-->|every call to the browser<br/>pauses the CPU| host
+    end
+    host --> web["Browser features: canvas / WebGL,<br/>sound, network, mouse and keyboard"]
+    host -.->|raw TCP only| helper["Socket helper<br/>(small native program)"]
 ```
-<embed src="movie.swf"> -> Worker -> emu.wasm (x86-32 CPU + a small Linux) -> Flash Player (libpepflashplayer.so)
-                                      pepper.js answers the plugin's browser calls: drawing, sound, network, input
-```
+
+The plugin believes it runs on a Linux PC. Whenever it asks its "browser" for something (draw this, play that, fetch a URL), the emulator
+stops and `pepper.js` does it with the real browser APIs. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What you need
 
@@ -32,6 +47,14 @@ node tools/build-extension.mjs   # -> dist/extension
 
 `build-extension.mjs` also bundles the socket-helper installers from `native/out`. If you have not built them (`tools/build-helper.sh`, needs Go
 and podman), run it as `NO_HELPER=1 node tools/build-extension.mjs`.
+
+```mermaid
+flowchart LR
+    plugin["libpepflashplayer.so<br/>you supply it, in vendor-private/"] --> build
+    parts["emulator and guest files<br/>(the three build scripts)"] --> build["node tools/build-extension.mjs"]
+    build --> dist["dist/extension"]
+    dist -->|Load unpacked| browser["Chrome"]
+```
 
 Then in Chrome: `chrome://extensions` -> turn on *Developer mode* -> **Load unpacked** -> pick `dist/extension`. Any page with a Flash
 `<embed>` or `<object>` now plays, `.swf` links open in a viewer, and the toolbar popup can open a local `.swf`.

@@ -5,6 +5,17 @@ has the measurements and the research behind it.
 
 ## What is handed out
 
+```mermaid
+flowchart TD
+    subgraph linux["Linux"]
+        deb[".deb package"] --> json["a JSON file in the browser's<br/>external-extensions folder"] --> auto["the browser installs the extension<br/>at its next start"]
+    end
+    subgraph other["Windows and macOS"]
+        zip["extension zip<br/>+ helper installer"] --> manual["unzip, then Developer mode,<br/>Load unpacked (once)"]
+    end
+```
+
+
 **Windows and macOS** get the extension zip plus the helper installer: `dist/flash-runner-extension.zip` (from `node tools/build-extension.mjs --zip`),
 and `native/out/FlashHelper-Setup.exe` / `FlashHelper.pkg` (from `tools/build-helper.sh`; the extension's settings page also offers the right one).
 The user does Developer mode + Load unpacked once. A CRX does not help there (blocked, see below). **Linux** installs itself from
