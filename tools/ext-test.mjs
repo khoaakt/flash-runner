@@ -16,7 +16,7 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { ARM_CHROME as PRINT_ARM, REPORT_CHROME as PRINT_REPORT, describePdf, expectedPrint } from './lib/print-spy.mjs';
-import { decodePacket, encodePacket, parseHello, responderHello, CHUNK } from './lib/rtmfp-mini.mjs';
+import { MiniRtmfpServer } from './lib/rtmfp-mini.mjs';
 import { writeFakeCamera, writeFakeMicrophone } from './lib/fake-media.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
@@ -93,18 +93,14 @@ if (process.argv.includes('--native')) {          // echo + socket policy server
 }
 const noHelper = process.argv.includes('--no-helper');   // run sock.swf with NO helper registered in the profile: the notice must appear
 // --udp-server: a UDP server on loopback that records what Flash sends (RTMFP rides on UDP) and answers once, and a helper config that allows UDP and loopback
-let udpServer = null; const udpSeen = [];
+let udpServer = null, rtmfp = null, udpCount = 0; const udpSeen = [];
 if (process.argv.includes('--udp-server')) {
   const { createSocket } = await import('node:dgram');
   const cfgFile = join(profileDir, 'sockets-udp.json'); writeFileSync(cfgFile, JSON.stringify({ allowPrivate: true, allowUDP: true })); process.env.FLASHRUNNER_SOCKETS_CONFIG = cfgFile;
   udpServer = createSocket('udp4');
-  // answers like the first step of an RTMFP server (tools/lib/rtmfp-mini.mjs): a responder hello (0x70) to every hello (0x30)
-  udpServer.on('message', (msg, rinfo) => {
-    let p = null; try { p = decodePacket(msg); } catch { /* not RTMFP */ }
-    udpSeen.push({ len: msg.length, from: rinfo.port, sid: p?.sid, checksumOk: p?.ok, chunks: (p?.chunks || []).map((c) => c.type.toString(16)) });
-    const hello = p?.chunks.find((c) => c.type === CHUNK.HELLO);
-    if (hello) udpServer.send(encodePacket([responderHello(parseHello(hello.data).tag)], p.timestamp ?? 0), rinfo.port, rinfo.address);
-  });
+  // a small RTMFP server (tools/lib/rtmfp-mini.mjs): handshake, key exchange, NetConnection.connect
+  rtmfp = new MiniRtmfpServer({ onEvent: (name, detail) => udpSeen.push({ event: name, ...detail }) });
+  udpServer.on('message', (msg, rinfo) => { udpCount++; for (const out of rtmfp.handle(msg)) udpServer.send(out, rinfo.port, rinfo.address); });
   await new Promise((r) => udpServer.bind(0, '127.0.0.1', r));
 }
 const udpQuery = udpServer ? 'url=' + encodeURIComponent('rtmfp://127.0.0.1:' + udpServer.address().port + '/app') : '';
@@ -258,10 +254,11 @@ if (customPage) {
   }
   await shot('custom-before.png');
   if (udpServer) {
-    console.log('udp datagrams the server saw:', JSON.stringify(udpSeen.slice(0, 4)), 'count', udpSeen.length);
-    check('Flash sent RTMFP hello datagrams through the helper (valid checksum, chunk 0x30)', udpSeen.length >= 1 && udpSeen[0].checksumOk && udpSeen[0].chunks.includes('30'), JSON.stringify(udpSeen.slice(0, 3)));
-    check('after our responder hello Flash sent its initial keying chunk (0x38)', udpSeen.some((u) => u.chunks.includes('38')), JSON.stringify(udpSeen.slice(0, 6)));
-    check('Flash read the reply through the helper', logs.some((l) => /\[udp\] first datagram received: \d+ bytes from 127\.0\.0\.1:/.test(l)), logs.filter((l) => /\[udp\]/.test(l)).join(' | '));
+    console.log('rtmfp events the server saw:', JSON.stringify(udpSeen.slice(0, 6)), 'datagrams', udpCount, 'chunks', rtmfp.seen.slice(0, 12).join(','));
+    check('Flash sent its RTMFP hello through the helper (chunk 0x30 with the URL)', udpSeen.some((u) => u.event === 'hello' && /^rtmfp:\/\/127\.0\.0\.1:\d+\/app$/.test(u.url)), JSON.stringify(udpSeen.slice(0, 4)));
+    check('Flash sent its initial keying (0x38) and our key exchange made its session packets decrypt', udpSeen.some((u) => u.event === 'keying') && rtmfp.seen.includes('10'), JSON.stringify(udpSeen.slice(0, 4)) + ' ' + rtmfp.seen.join(','));
+    check('Flash\'s NetConnection.connect (AMF0, objectEncoding 3) reached the server', udpSeen.some((u) => u.event === 'connect' && u.app === 'app' && u.objectEncoding === 3), JSON.stringify(udpSeen));
+    check('Flash read the reply through the helper',logs.some((l) => /\[udp\] first datagram received: \d+ bytes from 127\.0\.0\.1:/.test(l)), logs.filter((l) => /\[udp\]/.test(l)).join(' | '));
   }
   if (sockPort) {                                 // sock.swf reports what happened through navigateToURL: the tab Chrome opened for it carries the result
     const { targetInfos } = await send('Target.getTargets');

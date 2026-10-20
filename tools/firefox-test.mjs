@@ -14,7 +14,7 @@ import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readF
 import { createServer } from 'node:http';
 import { extname, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodePacket, encodePacket, parseHello, responderHello, CHUNK } from './lib/rtmfp-mini.mjs';
+import { MiniRtmfpServer } from './lib/rtmfp-mini.mjs';
 import { ARM_FIREFOX, REPORT_FIREFOX, describePdf, expectedPrint } from './lib/print-spy.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
@@ -66,18 +66,14 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 if (saveDir) mkdirSync(saveDir, { recursive: true });
-const udpSeen = []; let udpServer = null;
+const udpSeen = []; let udpServer = null, rtmfp = null;
 if (withUdp) {
   const { createSocket } = await import('node:dgram');
   const { tmpdir } = await import('node:os');
   const cfg = join(tmpdir(), 'flash-runner-ff-udp.json'); writeFileSync(cfg, JSON.stringify({ allowPrivate: true, allowUDP: true })); process.env.FLASHRUNNER_SOCKETS_CONFIG = cfg;
   udpServer = createSocket('udp4');
-  udpServer.on('message', (msg, rinfo) => {
-    let p = null; try { p = decodePacket(msg); } catch { /* not RTMFP */ }
-    udpSeen.push({ len: msg.length, from: rinfo.port, sid: p?.sid, checksumOk: p?.ok, chunks: (p?.chunks || []).map((c) => c.type.toString(16)) });
-    const hello = p?.chunks.find((c) => c.type === CHUNK.HELLO);
-    if (hello) udpServer.send(encodePacket([responderHello(parseHello(hello.data).tag)], p.timestamp ?? 0), rinfo.port, rinfo.address);
-  });
+  rtmfp = new MiniRtmfpServer({ onEvent: (name, detail) => udpSeen.push({ event: name, ...detail }) });   // tools/lib/rtmfp-mini.mjs
+  udpServer.on('message', (msg, rinfo) => { for (const out of rtmfp.handle(msg)) udpServer.send(out, rinfo.port, rinfo.address); });
   await new Promise((r) => udpServer.bind(0, '127.0.0.1', r));
   page = 'tests/ext/rtmfp.html?url=' + encodeURIComponent('rtmfp://127.0.0.1:' + udpServer.address().port + '/app');
 }
@@ -205,9 +201,10 @@ try {
   console.log('   screenshot', shotFile);
   if (withUdp) {
     const all = gdLog.join('');
-    console.log('   udp datagrams the server saw:', JSON.stringify(udpSeen.slice(0, 4)), 'count', udpSeen.length);
-    check('Flash sent RTMFP hello datagrams through the helper (valid checksum, chunk 0x30)', udpSeen.length >= 1 && udpSeen[0].checksumOk && udpSeen[0].chunks.includes('30'), JSON.stringify(udpSeen.slice(0, 3)));
-    check('after our responder hello Flash sent its initial keying chunk (0x38)', udpSeen.some((u) => u.chunks.includes('38')), JSON.stringify(udpSeen.slice(0, 6)));
+    console.log('   rtmfp events the server saw:', JSON.stringify(udpSeen.slice(0, 6)), 'chunks', rtmfp.seen.slice(0, 12).join(','));
+    check('Flash sent its RTMFP hello through the helper (chunk 0x30 with the URL)', udpSeen.some((u) => u.event === 'hello' && /^rtmfp:\/\/127\.0\.0\.1:\d+\/app$/.test(u.url)), JSON.stringify(udpSeen.slice(0, 4)));
+    check('Flash sent its initial keying (0x38) and our key exchange made its session packets decrypt', udpSeen.some((u) => u.event === 'keying') && rtmfp.seen.includes('10'), JSON.stringify(udpSeen.slice(0, 4)) + ' ' + rtmfp.seen.join(','));
+    check('Flash\'s NetConnection.connect (AMF0, objectEncoding 3) reached the server', udpSeen.some((u) => u.event === 'connect' && u.app === 'app' && u.objectEncoding === 3), JSON.stringify(udpSeen));
     check('Flash read the reply through the helper', UDP_RECV.test(all), all.split(String.fromCharCode(10)).filter((l) => UDP_LINE.test(l)).join(' | ') || 'no [udp] lines');
   }
   if (withSockets) {
