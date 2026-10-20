@@ -10,7 +10,7 @@
   const PLAYER_ORIGIN = new URL(PLAYER_URL).origin;
   const SKIP_ATTRS = new Set(['width', 'height', 'style', 'class', 'src', 'data', 'type', 'classid', 'codebase', 'pluginspage', 'hidden']);
   const players = new Map();          // iframe -> { config, started }
-  let settings = { enabled: true, disabledSites: [], autoplayMax: 1, clickToPlay: false };
+  let settings = { enabled: true, disabledSites: [], mediaSites: [], autoplayMax: 1, clickToPlay: false };
   let autoplayed = 0;
 
   const attr = (el, n) => (el.getAttribute(n) || '').trim();
@@ -58,7 +58,8 @@
     el.__flashRunner = true;
     const f = document.createElement('iframe');
     f.src = PLAYER_URL;
-    f.allow = 'autoplay; fullscreen; clipboard-read; clipboard-write; gamepad';
+    // camera and microphone are delegated to the player frame only on the sites the user listed in `mediaSites` (default: none)
+    f.allow = 'autoplay; fullscreen; clipboard-read; clipboard-write; gamepad' + (mediaAllowed() ? '; camera; microphone' : '');
     f.setAttribute('scrolling', 'no');
     f.setAttribute('frameborder', '0');
     f.setAttribute('data-flash-runner', '1');
@@ -108,9 +109,10 @@
     if (root.nodeType === 1 && (root.localName === 'object' || root.localName === 'embed') && isFlash(root)) replace(root);
   }
 
+  const mediaAllowed = () => (settings.mediaSites || []).some((h) => location.hostname === h || location.hostname.endsWith('.' + h));
   const siteDisabled = () => settings.disabledSites.some((h) => location.hostname === h || location.hostname.endsWith('.' + h));
 
-  chrome.storage.local.get({ enabled: true, disabledSites: [], autoplayMax: 1, clickToPlay: false }).then((s) => {
+  chrome.storage.local.get({ enabled: true, disabledSites: [], mediaSites: [], autoplayMax: 1, clickToPlay: false }).then((s) => {
     settings = s;
     if (!settings.enabled || siteDisabled()) return;
     const mo = new MutationObserver((muts) => {

@@ -1,3 +1,5 @@
+import { createMedia } from './frame-media.js';
+
 // What only the player frame's main thread can do. The emulator runs in a worker, which has no gamepads, file pickers, camera or print dialog,
 // so it asks the frame through the 'svc' message (see FlashPlayer.service in loader.js and frameService in worker.js).
 // A service is called as fn(args, { active }) where `active` says whether the user has a transient activation (a click or key press a moment ago):
@@ -5,6 +7,7 @@
 
 export function createFrameServices(player) {
   return {
+    ...createMedia(player),
     /** Round trip check and a look at the activation state. */
     ping() { return { pong: true, active: navigator.userActivation?.isActive ?? null }; },
     /** Open dialog: {accept, multiple} -> [{name, type, bytes}] ([] when the user cancels). Needs a user activation, as every browser file picker does. */

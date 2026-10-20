@@ -27,7 +27,7 @@ cpSync(join(ui, 'dist', 'ui-assets'), join(out, 'ui-assets'), { recursive: true 
 
 // shared runtime code (single source of truth is web/)
 const WEB = ['emu.js', 'pepper.js', 'pp-consts.js', 'ppapi-sigs.js', 'ppb-impl.js', 'ppb-net.js', 'ppb-audio.js', 'ppb-flash.js', 'ppb-misc.js',
-  'ppb-gles2.js', 'ppb-graphics3d.js', 'gles2-context.js', 'present.js', 'persist.js', 'net-cache.js', 'scripting.js', 'ppb-sockets.js', 'ppb-files.js', 'ppb-print.js', 'socket-bridge.js', 'worker.js', 'loader.js', 'frame-services.js', 'audio-worklet.js', 'plugin-accelerators.js', 'nanojit-capture.js', 'nanojit-leaf.js', 'nanojit-loop.js', 'nanojit-memory.js', 'nanojit-number.js', 'lir-policy.js'];
+  'ppb-gles2.js', 'ppb-graphics3d.js', 'gles2-context.js', 'present.js', 'persist.js', 'net-cache.js', 'scripting.js', 'ppb-sockets.js', 'ppb-files.js', 'ppb-print.js', 'ppb-media.js', 'frame-media.js', 'socket-bridge.js', 'worker.js', 'loader.js', 'frame-services.js', 'audio-worklet.js', 'plugin-accelerators.js', 'nanojit-capture.js', 'nanojit-leaf.js', 'nanojit-loop.js', 'nanojit-memory.js', 'nanojit-number.js', 'lir-policy.js'];
 mkdirSync(join(out, 'web'), { recursive: true });
 for (const f of WEB) cpSync(join(root, 'web', f), join(out, 'web', f));
 // every relative import of a bundled module must itself be bundled (a missing one only fails at runtime in the worker)

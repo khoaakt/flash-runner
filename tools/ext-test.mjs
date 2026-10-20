@@ -16,6 +16,7 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { ARM_CHROME as PRINT_ARM, REPORT_CHROME as PRINT_REPORT, describePdf, expectedPrint } from './lib/print-spy.mjs';
+import { writeFakeCamera, writeFakeMicrophone } from './lib/fake-media.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,6 +77,7 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 const profileDir = mkdtempSync(join(tmpdir(), 'flashrunner-ext-'));
+if (process.argv.includes('--fake-media')) { writeFakeCamera(join(profileDir, 'camera.y4m')); writeFakeMicrophone(join(profileDir, 'mic.wav')); }
 if (pickText !== null) { pickFile = join(profileDir, 'pick.txt'); writeFileSync(pickFile, pickText); }
 let sockServer = null, sockPort = 0;
 if (process.argv.includes('--native')) {          // install the socket helper into this throw-away profile only
@@ -93,6 +95,7 @@ const sockQuery = sockPort || (noHelper ? 59999 : 0);     // a high port nothing
 const chrome = spawn(CHROME, [
   `--user-data-dir=${profileDir}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging',
   '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required', '--enable-unsafe-webgpu', `--use-angle=${ANGLE}`, '--ignore-gpu-blocklist',
+  ...(process.argv.includes('--fake-media') ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${join(profileDir, 'camera.y4m')}`, `--use-file-for-fake-audio-capture=${join(profileDir, 'mic.wav')}`] : []),   // generated clip and tone instead of real devices, and no permission prompt
   ...(windowSize ? [`--window-size=${windowSize.replace('x', ',')}`] : []), ...(headed ? [] : ['--headless=new']), 'about:blank',
 ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
 const cleanup = () => { if (process.env.EXT_TEST_LOGS) console.log('--- console (' + logs.length + ' lines) ---\n' + logs.map((l) => String(l).slice(0, 220)).join('\n')); try { chrome.kill('SIGKILL'); } catch {} server.close(); try { sockServer?.close(); } catch {} };
@@ -299,6 +302,7 @@ if (customPage) {
   }
   let i = 0;
   for (const c of String(clicks).split(';').filter(Boolean)) {
+    if (c.startsWith('wait:')) { await sleep(Number(c.slice(5))); continue; }    // "60,30;wait:3000;240,218": let something appear before the next click
     const [px, py] = c.split(',').map(Number); const [x, y] = pt(px, py);
     await inp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await inp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });

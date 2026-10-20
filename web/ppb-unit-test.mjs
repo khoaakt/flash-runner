@@ -435,6 +435,20 @@ check('resource ids start above the reserved loops (1 main, 2 audio)', pep.nextR
   check('id is UTF-16 and NUL terminated', id[0] === 80 && id[1] === 0 && id[2] === 97 && id[8] === 65 && id[9] === 0 && id[10] === 0 && id[11] === 0, JSON.stringify(id));
   check('unused pad slots stay zero', pep.u32(it(2) + 464) === 0 && pep.u32(it(3)) === 0);
 }
+// ---- Camera and microphone conversions: I420 planes (BT.601 limited range) and 16-bit PCM
+{
+  const { rgbaToI420, floatToPcm16 } = await import('./ppb-media.js');
+  const px = (r, g, b) => [r, g, b, 255];
+  const frame = new Uint8ClampedArray([...px(255, 0, 0), ...px(255, 0, 0), ...px(255, 255, 255), ...px(255, 255, 255), ...px(0, 0, 0), ...px(0, 0, 0), ...px(0, 0, 255), ...px(0, 0, 255)]);   // 4x2: red | white over black | blue
+  const out = new Uint8Array(4 * 2 * 3 / 2);
+  rgbaToI420(frame, 4, 2, out);
+  check('I420: Y plane of red, white, black and blue', Array.from(out.slice(0, 8)).join() === '82,82,235,235,16,16,41,41', Array.from(out.slice(0, 8)).join());
+  check('I420: one U and one V per 2x2 block, U planes then V planes', out.length === 12 && out[8] === 90 && out[9] === 128 && out[10] === 240 && out[11] === 128, Array.from(out.slice(8)).join());
+  const pcm = new Int16Array(5);
+  floatToPcm16(new Float32Array([0, 0.5, 1, -1, 3]), 0, 5, pcm, 0);
+  check('PCM16: scaled, clipped to the full range', Array.from(pcm).join() === '0,16383,32767,-32768,32767', Array.from(pcm).join());
+}
+
 // ---- Printing: PP_PrintSettings_Dev is 60 bytes (printable_area, content_area, paper_size, dpi, orientation, scaling, grayscale, format)
 {
   pep.instances.set(1, { id: 1 });

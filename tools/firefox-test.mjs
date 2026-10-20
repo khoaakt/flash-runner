@@ -93,6 +93,7 @@ if (!keepOpen) setTimeout(() => { console.error('WATCHDOG: test exceeded 170 s')
 
 for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${gdPort}/status`); break; } catch { await sleep(200); } }
 const prefs = {
+  ...(process.argv.includes('--fake-media') ? { 'media.navigator.streams.fake': true, 'media.navigator.permission.disabled': true } : {}),   // a test pattern and a beep instead of real devices, and no permission prompt
   ...(saveDir ? { 'browser.download.folderList': 2, 'browser.download.dir': saveDir, 'browser.download.useDownloadDir': true, 'browser.helperApps.neverAsk.saveToDisk': 'application/octet-stream', 'browser.download.manager.showWhenStarting': false } : {}),
   'extensions.webextensions.uuids': JSON.stringify({ [GECKO_ID]: UUID }),
   'devtools.console.stdout.content': true,       // page and worker console output goes to Firefox's stdout, which geckodriver forwards
@@ -164,7 +165,7 @@ try {
   }
   if (clicks || keys) {
     const KEY = { Enter: '\uE007', Backspace: '\uE003', Tab: '\uE004', Escape: '\uE00C', ArrowLeft: '\uE012', ArrowRight: '\uE014', Space: ' ' };
-    const mouse = clicks.split(';').filter(Boolean).flatMap((c) => { const [x, y] = c.split(',').map(Number); return [{ type: 'pointerMove', x, y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }, { type: 'pause', duration: 80 }, { type: 'pointerUp', button: 0 }, { type: 'pause', duration: 300 }]; });
+    const mouse = clicks.split(';').filter(Boolean).flatMap((c) => { if (c.startsWith('wait:')) return [{ type: 'pause', duration: Number(c.slice(5)) }]; const [x, y] = c.split(',').map(Number); return [{ type: 'pointerMove', x, y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }, { type: 'pause', duration: 80 }, { type: 'pointerUp', button: 0 }, { type: 'pause', duration: 300 }]; });
     if (mouse.length) await wd('POST', `${S}/actions`, { actions: [{ type: 'pointer', id: 'mouse', parameters: { pointerType: 'mouse' }, actions: mouse }] });
     const kb = keys.split(',').filter(Boolean).flatMap((k) => [{ type: 'keyDown', value: KEY[k] ?? k }, { type: 'keyUp', value: KEY[k] ?? k }, { type: 'pause', duration: 60 }]);
     if (kb.length) await wd('POST', `${S}/actions`, { actions: [{ type: 'key', id: 'kb', actions: kb }] });

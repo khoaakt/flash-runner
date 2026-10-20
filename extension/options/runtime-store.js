@@ -134,7 +134,7 @@ export const MEM_MB = 2040;
 // `log`: print the player's messages (loading, JIT/LIR status, guest console) to the browser console. Off by default, and the
 // only switch: the diagnostics settings `diag` and `fpsLog` (kept in storage, no longer shown in the options page) produce
 // nothing, and cost nothing, unless it is on.
-export const DEFAULTS = { enabled: true, openSwfLinks: true, autoplayMax: 1, clickToPlay: false, gpu3d: true, quality: 'auto', netCache: true, runtimeVersion: DEFAULT_RUNTIME, disabledSites: [], jitIntrinsics: true, jitTrustLoads: true, diag: false, fpsLog: false, log: false };
+export const DEFAULTS = { enabled: true, openSwfLinks: true, autoplayMax: 1, clickToPlay: false, gpu3d: true, quality: 'auto', netCache: true, runtimeVersion: DEFAULT_RUNTIME, disabledSites: [], mediaSites: [], jitIntrinsics: true, jitTrustLoads: true, diag: false, fpsLog: false, log: false };
 /** Whether the player may print to the console: the "Debug log" setting and nothing else. The diagnostics settings (`diag`, `fpsLog`) only apply while it is on. */
 export function logEnabled(settings) { return !!settings.log; }
 export async function getSettings() {

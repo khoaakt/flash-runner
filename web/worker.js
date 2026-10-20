@@ -192,6 +192,7 @@ self.onmessage = (e) => {
   else if (m.type === 'sock-in') sockBridge.handle(m.msg);
   else if (m.type === 'svc-reply') { const w = svcWaiters.get(m.id); svcWaiters.delete(m.id); w?.(m); }
   else if (m.type === 'gamepads' && pep) pep.gamepads = m.pads;
+  else if (m.type === 'media' && pep?.mediaIn) pep.mediaIn(m);          // a camera or microphone chunk from the frame (frame-media.js)
   else if (m.type === 'page-reply') { const w = pageWaiters.get(m.id); pageWaiters.delete(m.id); w?.(m.reply); }
   else if (m.type === 'invoke' && pep) pep.invokeInstance(instance, m.name, m.args || []).then((r) => post('invoke-result', { id: m.id, ...r }), (e) => post('invoke-result', { id: m.id, ok: false, exception: String(e) }));
   else if (m.type === 'audio') { audioSink = m.sab ? new RingSink(m.sab, m.rate) : new MessageSink(m.rate); audioReadyResolve(); }
