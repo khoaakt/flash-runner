@@ -10,7 +10,7 @@
 // Chrome 137+ ignores --load-extension in branded builds; `Extensions.loadUnpacked` over --remote-debugging-pipe
 // with --enable-unsafe-extension-debugging is the supported way to install an unpacked extension for testing.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, statSync, createReadStream, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,11 @@ const extraSettings = {};                          // --setting key=<json> (repe
 process.argv.forEach((a, i) => { if (a === '--setting') { const kv = process.argv[i + 1] || ''; const j = kv.indexOf('='); extraSettings[kv.slice(0, j)] = JSON.parse(kv.slice(j + 1)); } });
 const cpuProfile = process.argv.includes('--cpu');   // CPU profile of every worker (the emulator) -> <shots dir>/worker-N.cpuprofile; it perturbs timing: attribution runs only
 const noShots = process.argv.includes('--no-shots'); // with --page: print the log summary after the wait and exit (no screenshots, no other checks)
+let pickFile = arg('--pick-file', null);       // path of a file the player frame's file dialog is answered with (Chrome CDP file chooser interception)
+const pickText = arg('--pick-text', null);       // same, with the content given here (a temporary file is made)
+const expectDownload = arg('--expect-download', null);   // regex a downloaded file's content must match (with --save-dir)
+let fileDialogs = 0;
+const saveDir = arg('--save-dir', null) ? resolve(arg('--save-dir', null)) : null;           // downloads (the player frame's save dialog) are accepted into this directory and listed at the end
 const clip = arg('--clip', null);                 // text placed on the clipboard (from inside the player frame) before the clicks
 const keys = arg('--keys', '');                  // comma list of DOM key names pressed (with real key events) after the clicks, e.g. a,Enter,ArrowLeft
 const rightClick = arg('--rightclick', '');       // "x,y" page coordinates of a right click (Flash context menu) done last
@@ -69,6 +74,7 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 const profileDir = mkdtempSync(join(tmpdir(), 'flashrunner-ext-'));
+if (pickText !== null) { pickFile = join(profileDir, 'pick.txt'); writeFileSync(pickFile, pickText); }
 let sockServer = null, sockPort = 0;
 if (process.argv.includes('--native')) {          // install the socket helper into this throw-away profile only
   const { execFileSync } = await import('node:child_process');
@@ -246,6 +252,12 @@ if (customPage) {
   if (process.env.DEBUG_SESSIONS) console.log([...sessions.values()].map((v) => v.type + ' ' + v.url).join('\n'));
   console.log('input route:', playerSession && frameRect ? 'player frame session' : 'page target (no OOPIF session found)');
   const inFrame = async (expr) => { if (!playerSession) return 'no player session'; const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, playerSession.sid); return r.exceptionDetails ? 'ERR ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text) : r.result.value; };
+  if (saveDir) { mkdirSync(saveDir, { recursive: true }); await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: saveDir }); }
+  if (pickFile && playerSession) {   // answer the player frame's file dialog with this file (the input is real: Chrome reports that it was asked to open the chooser)
+    const sid = playerSession.sid;
+    await send('Page.enable', {}, sid); await send('DOM.enable', {}, sid); await send('Page.setInterceptFileChooserDialog', { enabled: true }, sid);
+    handlers.push((m) => { if (m.method === 'Page.fileChooserOpened' && m.sessionId === sid) { fileDialogs++; send('DOM.setFileInputFiles', { files: [pickFile], backendNodeId: m.params.backendNodeId }, sid).catch((e) => console.log('setFileInputFiles:', e.message)); } });
+  }
   if (frameEval) console.log('frame pre-eval =>', JSON.stringify(await inFrame(frameEval)));
   if ((keys || menuClick || rightClick) && playerSession) {   // a headless test frame is not focused: without this the keys never reach the movie
     await cp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {}); await send('Emulation.setFocusEmulationEnabled', { enabled: true }, playerSession.sid).catch(() => {}); await cp.send('Page.bringToFront').catch(() => {});
@@ -331,6 +343,9 @@ if (customPage) {
     console.log('clipboard calls =>', calls);
     if (expectClipboard !== null) check(`the movie wrote "${expectClipboard}" to the clipboard`, calls.includes('write:' + expectClipboard) && calls.includes('"ok"') && !calls.includes('ERR'), calls);
   }
+  if (process.env.EXT_TEST_GREP) console.log(logs.filter((l) => new RegExp(process.env.EXT_TEST_GREP).test(l)).join(String.fromCharCode(10)));   // every console line matching this regex
+  if (saveDir) { await sleep(1500); const got = readdirSync(saveDir); const files = got.map((n) => [n, readFileSync(join(saveDir, n), 'utf8').slice(0, 80)]); console.log('downloaded files:', JSON.stringify(files)); if (expectDownload) check('Flash saved a file through the browser download', files.some(([, t]) => new RegExp(expectDownload).test(t)), JSON.stringify(files)); }
+  if (pickFile) { console.log('file dialogs opened in the player frame:', fileDialogs); check('the player frame asked the browser for a file dialog', fileDialogs >= 1, String(fileDialogs)); }
   if (frameEval) console.log('frame post-eval =>', JSON.stringify(await inFrame('window.__fe')));
   if (evalPost) console.log('post-eval =>', JSON.stringify(await cp.eval(evalPost).catch((e) => 'ERR ' + e.message)));
   await shot('custom.png');

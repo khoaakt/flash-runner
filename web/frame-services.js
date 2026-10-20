@@ -7,7 +7,47 @@ export function createFrameServices(player) {
   return {
     /** Round trip check and a look at the activation state. */
     ping() { return { pong: true, active: navigator.userActivation?.isActive ?? null }; },
+    /** Open dialog: {accept, multiple} -> [{name, type, bytes}] ([] when the user cancels). Needs a user activation, as every browser file picker does. */
+    'pick-files': (args, ctx) => pickFiles(args || {}, ctx),
+    /** Save: {name, bytes} -> a download of the bytes (the browser decides where it goes). */
+    'save-file': (args) => saveFile(args || {}),
   };
+}
+
+export const MAX_PICKED_BYTES = 64 * 1024 * 1024;
+
+/** PPB_FileChooser accept types ("text/plain", ".txt", "*.txt") as an <input accept> list. */
+export function acceptList(accept) {
+  return String(accept || '').split(',').map((t) => t.trim().replace(/^\*(?=\.)/, '')).filter(Boolean).map((t) => (t.includes('/') || t.startsWith('.') ? t : '.' + t)).join(',');
+}
+
+async function pickFiles({ accept, multiple }, ctx) {
+  if (!ctx?.active) throw new Error('a file dialog needs a click or key press first');
+  const input = document.createElement('input');
+  input.type = 'file'; input.multiple = !!multiple; input.accept = acceptList(accept); input.style.display = 'none';
+  document.body.append(input);
+  try {
+    const files = await new Promise((resolve) => {
+      input.addEventListener('change', () => resolve(Array.from(input.files || [])), { once: true });
+      input.addEventListener('cancel', () => resolve([]), { once: true });
+      input.click();
+    });
+    const out = [];
+    for (const f of files) {
+      if (f.size > MAX_PICKED_BYTES) throw new Error(`${f.name} is larger than ${MAX_PICKED_BYTES / 1048576} MiB`);
+      out.push({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) });
+    }
+    return out;
+  } finally { input.remove(); }
+}
+
+function saveFile({ name, bytes }) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  a.download = String(name || 'download').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 200) || 'download';
+  a.style.display = 'none'; document.body.append(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(a.href); }, 30000);
+  return { saved: a.download, size: bytes.length };
 }
 
 /** One sample of the connected pads in the layout the worker copies into PP_GamepadsSampleData (at most 4 pads, 16 axes, 32 buttons). */

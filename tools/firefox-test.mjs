@@ -10,7 +10,7 @@
 //                                                                            is closed) with the add-on installed and --also pages in more tabs, to try it by hand
 // Needs: Firefox 128 or newer and geckodriver (https://github.com/mozilla/geckodriver/releases). Exit status 0 when every check passed.
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,9 @@ if (!geckodriver) { console.error('give --geckodriver <path> (or set GECKODRIVER
 const firefox = arg('--firefox', process.env.FIREFOX || (process.platform === 'win32' ? join(process.env.LOCALAPPDATA || '', 'Mozilla Firefox', 'firefox.exe') : undefined));
 const addon = resolve(arg('--addon', join(root, 'dist/firefox')));
 let page = arg('--page', 'tests/ext/compat.html');   // --sockets replaces it with tests/ext/sock.html
+const pickText = arg('--pick-text', null);          // content of the file the player frame's open dialog is answered with
+const expectDownload = arg('--expect-download', null);   // regex a downloaded file's content must match
+const saveDir = arg('--save-dir', null) ? resolve(arg('--save-dir', null)) : null;            // downloads of the player frame's save dialog go here
 const withSockets = process.argv.includes('--sockets');   // run tests/ext/sock.html against a local echo server through the native helper (needs the helper installed for Firefox)
 const seconds = +arg('--seconds', 15);
 const shots = resolve(arg('--shots', join(root, 'tests/out')));
@@ -57,6 +60,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
+if (saveDir) mkdirSync(saveDir, { recursive: true });
 let sockServer = null, sockSeen = '';
 if (withSockets) {    // the helper refuses loopback unless told otherwise; geckodriver, Firefox and the helper inherit this variable
   const { createServer: tcp } = await import('node:net');
@@ -87,6 +91,7 @@ if (!keepOpen) setTimeout(() => { console.error('WATCHDOG: test exceeded 170 s')
 
 for (let i = 0; i < 50; i++) { try { await fetch(`http://127.0.0.1:${gdPort}/status`); break; } catch { await sleep(200); } }
 const prefs = {
+  ...(saveDir ? { 'browser.download.folderList': 2, 'browser.download.dir': saveDir, 'browser.download.useDownloadDir': true, 'browser.helperApps.neverAsk.saveToDisk': 'application/octet-stream', 'browser.download.manager.showWhenStarting': false } : {}),
   'extensions.webextensions.uuids': JSON.stringify({ [GECKO_ID]: UUID }),
   'devtools.console.stdout.content': true,       // page and worker console output goes to Firefox's stdout, which geckodriver forwards
   'media.autoplay.default': 0,
@@ -146,6 +151,14 @@ try {
     await wd('POST', `${S}/frame/parent`, {});
     console.log('   frame eval =>', JSON.stringify(r));
   }
+  const inPlayerFrame = async (script) => {
+    const el = await wd('POST', `${S}/element`, { using: 'css selector', value: 'iframe[data-flash-runner]' });
+    await wd('POST', `${S}/frame`, { id: el });
+    try { return await exec(script); } finally { await wd('POST', `${S}/frame/parent`, {}); }
+  };
+  if (pickText !== null) {   // headless Firefox cancels a file picker at once and cannot be driven: give the player frame's <input type=file> a file the moment it is added (before the cancel arrives) and fire change
+    console.log('   file picker hook =>', JSON.stringify(await inPlayerFrame(`new MutationObserver((muts, obs) => { for (const m of muts) for (const n of m.addedNodes) if (n.localName === 'input' && n.type === 'file') { const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(pickText)}], 'pick.txt', { type: 'text/plain' })); n.files = dt.files; document.documentElement.setAttribute('data-fed', 'accept=' + n.accept + ' multiple=' + n.multiple); n.dispatchEvent(new Event('change')); } }).observe(document.body, { childList: true }); return 'armed';`)));
+  }
   if (clicks || keys) {
     const KEY = { Enter: '\uE007', Backspace: '\uE003', Tab: '\uE004', Escape: '\uE00C', ArrowLeft: '\uE012', ArrowRight: '\uE014', Space: ' ' };
     const mouse = clicks.split(';').filter(Boolean).flatMap((c) => { const [x, y] = c.split(',').map(Number); return [{ type: 'pointerMove', x, y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }, { type: 'pause', duration: 80 }, { type: 'pointerUp', button: 0 }, { type: 'pause', duration: 300 }]; });
@@ -155,6 +168,8 @@ try {
     await sleep(1500);
     console.log('   sent', clicks ? 'clicks ' + clicks : '', keys ? 'keys ' + keys : '');
   }
+  if (pickText !== null) { const fed = await inPlayerFrame("return document.documentElement.getAttribute('data-fed') || 'the picker was never given a file'"); console.log('   file picker =>', JSON.stringify(fed)); check('the player frame opened a file input and it was answered', /^accept=/.test(String(fed)), String(fed)); }
+  if (saveDir) { await sleep(2500); const got = readdirSync(saveDir).filter((n) => !/.part$/.test(n)); const files = got.map((n) => [n, readFileSync(join(saveDir, n), 'utf8').slice(0, 80)]); console.log('   downloaded files:', JSON.stringify(files)); if (expectDownload) check('Flash saved a file through the browser download', files.some(([, t]) => new RegExp(expectDownload).test(t)), JSON.stringify(files)); }
   mkdirSync(shots, { recursive: true });
   const png = await wd('GET', `${S}/screenshot`);
   const shotFile = join(shots, 'firefox-page.png'); writeFileSync(shotFile, Buffer.from(png, 'base64'));

@@ -88,6 +88,21 @@ Branch `poc/missing-features`. The bridge in the page (`extension/content/bridge
 - `tests/ext/jslink.html` (`JsLink.hx`): the `javascript:` link reaches the page once, with and without the no-eval CSP, in Chrome (`ext-test.mjs`) and Firefox (`firefox-test.mjs --page-eval`).
 - Not covered, by design: `ExternalInterface.call("eval", ...)` (it calls the page's own `eval`, which that CSP refuses for any script), scripts using operators, assignments or indexing, and pages whose CSP also blocks the player frame (`frame-src`), which fall back to the viewer button as before.
 
+## PoC: file dialogs
+
+Branch `poc/missing-features`. `FileReference.browse()` / `save()` ended in `PPB_FileChooser(Dev);0.6::Create` and `PPB_FileChooserTrusted;0.6::ShowWithoutUserGesture`, neither implemented, and Flash logged `FileChooser_Trusted::Show() failed with error -2`. Recorded call sequence with `tests/swf-src/FileProbe.hx`: chooser `Create` (mode, accept types) → `ShowWithoutUserGesture(chooser, save_as, suggested_name, array output)` → the returned FileRef's `PPB_FileRef;1.2::GetName` → `PPB_Flash_File_FileRef;2::OpenFile(ref, flags, &fd)`: Flash does not use `PPB_FileIO` here, it wants a native descriptor, which in this emulator is a guest fd.
+
+`web/ppb-files.js` implements the chooser, `PPB_FileRef`, `PPB_FileRefPrivate` and `PPB_Flash_File_FileRef`:
+- **Open:** the worker asks the player frame (`pick-files` service, `web/frame-services.js`), which clicks a hidden `<input type=file>` (the accept list comes from Flash's filters; a size cap of 64 MiB; the browser requires a user activation, and without one the dialog is refused with `PP_ERROR_NO_USER_GESTURE`). The picked bytes are written into the guest file system under `/tmp/flash-runner-files/<n>/<base name>`; `OpenFile` returns a read-only descriptor to that copy (write access to a picked file is refused). Cancel gives `PP_ERROR_USERCANCEL` and Flash's `cancel` event.
+- **Save:** the browser chooses where a download goes, so the "dialog" returns an empty guest file. When Flash has written it and its size has been unchanged for 0.8 s, the bytes go to the frame (`save-file` service) which downloads them under Flash's suggested name (base name only). There is no guest hook for a descriptor being closed, so "finished writing" is that quiet period; an empty file is never downloaded, and a file written again later is downloaded again.
+
+Evidence (`tests/ext/file.html`, `FileProbe.hx`; both browsers): the Open button loads the picked text and paints the PASS square; the Save button produces `out.txt` containing the saved text.
+- Chrome: `tools/ext-test.mjs --bundled --page tests/ext/file.html --clicks 60,30 --pick-text flash-runner-file-test --expect-pass` (the player frame's file chooser is intercepted over CDP and answered with the file, and the check counts that Chrome was asked to open it) and `--clicks 60,100 --save-dir <dir> --expect-download "saved by flash-runner"` (a real download into the directory).
+- Firefox 158: `tools/firefox-test.mjs` with the same arguments. Headless Firefox cancels a native file picker at once and cannot be driven, so a `MutationObserver` in the player frame gives the `<input type=file>` its file the moment it is added and fires `change`; everything after the input (the service, the guest copy, Flash, the paint) is real. The download goes through Firefox's own download pipeline into the profile's download directory.
+- `web/ppb-unit-test.mjs` covers the accept list, the chooser → guest copy → `OpenFile`/`QueryFile` chain, refusal without an activation and the save name sanitising.
+
+Not covered: the native dialog itself in Firefox (above), `FileReferenceList` and multiple selection, `FileReference.upload()` and `download()` (other interfaces), files above 64 MiB, a save of an empty file, and a browser setting that asks where to save each download.
+
 ## Debug log setting (extension)
 
 `log` (default `false`) in `extension/options/runtime-store.js`, switch "Debug log" under Troubleshooting in the options page

@@ -105,10 +105,7 @@ export function buildFlash(host) {
     host.wi32(p + 12, 0);
     for (const o of [16, 24, 32]) host.wf64(p + o, st.mtime);
   }
-  impl['PPB_Flash_File_FileRef'] = {
-    OpenFile(tid, ref, mode, filePtr) { return PP_ERROR_NOTSUPPORTED; },
-    QueryFile(tid, ref, info) { return PP_ERROR_NOTSUPPORTED; },
-  };
+  // PPB_Flash_File_FileRef (FileReference's native file handles) lives in ppb-files.js with the file dialogs
 
   impl.PPB_FlashFullscreen = {
     IsFullscreen(tid, instance) { return host.instances.get(instance)?.fullscreen ? 1 : 0; },

@@ -435,5 +435,42 @@ check('resource ids start above the reserved loops (1 main, 2 audio)', pep.nextR
   check('id is UTF-16 and NUL terminated', id[0] === 80 && id[1] === 0 && id[2] === 97 && id[8] === 65 && id[9] === 0 && id[10] === 0 && id[11] === 0, JSON.stringify(id));
   check('unused pad slots stay zero', pep.u32(it(2) + 464) === 0 && pep.u32(it(3)) === 0);
 }
+// ---- File dialogs: the chooser asks the frame, copies the pick into the guest, FileRef/Flash_File_FileRef give Flash a descriptor
+{
+  const { acceptList } = await import('./frame-services.js');
+  check('accept types become an <input accept> list', acceptList('*.txt, text/plain,png, .jpg') === '.txt,text/plain,.png,.jpg' && acceptList('') === '' && acceptList(undefined) === '');
+  const guestFiles = new Map(), asked = [];
+  const savedEmu = pep.emu;
+  pep.emu = { ...savedEmu, mkdirp: () => 0, writeFile: (p, b) => { guestFiles.set(p, b); return 0; }, stat: (p) => (guestFiles.has(p) ? { size: guestFiles.get(p).length, mode: 0o100644, mtime: 1000 } : null),
+    openFd: (p, fl) => (guestFiles.has(p) ? 7 : (fl & 0x40) ? (guestFiles.set(p, new Uint8Array(0)), 8) : -2), dumpTree: () => [] };
+  pep.opts.service = { request: async (op, args) => { asked.push([op, args]); return { ok: true, value: [{ name: 'C:\\Users\\x\\pick.txt', type: 'text/plain', bytes: Uint8Array.of(104, 105) }] }; } };
+  pep.instances.set(1, { id: 1 });
+  const ch = call('PPB_FileChooser(Dev)', 'Create', MAIN, 1, 1, pep.mkVar('*.txt'));
+  check('a file chooser resource is created', call('PPB_FileChooser(Dev)', 'IsFileChooser', MAIN, ch) === 1 && pep.getRes(ch, 'filechooser').mode === 1);
+  const cc = { func: 1, user: 0, flags: 0 }, noOut = { func: 0, user: 0 };
+  const rc = call('PPB_FileChooserTrusted', 'ShowWithoutUserGesture', MAIN, ch, 0, pep.mkVar(undefined), noOut, cc);
+  check('Show is asynchronous', rc === PP_OK_COMPLETIONPENDING, String(rc));
+  await new Promise((r) => setTimeout(r, 20));
+  check('the frame is asked for files with the accept list and the multiple flag', asked.length === 1 && asked[0][0] === 'pick-files' && asked[0][1].accept === '*.txt' && asked[0][1].multiple === true, JSON.stringify(asked));
+  const path = [...guestFiles.keys()][0];
+  check('the picked bytes land under /tmp/flash-runner-files with only the base name', /^\/tmp\/flash-runner-files\/\d+\/pick\.txt$/.test(path) && guestFiles.get(path).join() === '104,105', String(path));
+  const refId = [...pep.res].find(([, o]) => o.type === 'fileref')?.[0];
+  check('a FileRef resource exists for it and is external', !!refId && call('PPB_FileRef', 'IsFileRef', MAIN, refId) === 1 && call('PPB_FileRef', 'GetFileSystemType', MAIN, refId) === 3);
+  const fp = pep.alloc(4), info = pep.alloc(40);
+  check('Flash_File_FileRef.OpenFile gives a read-only descriptor', call('PPB_Flash_File_FileRef', 'OpenFile', MAIN, refId, 1, fp) === 0 && pep.i32(fp) === 7);
+  check('opening a picked file for writing is refused', call('PPB_Flash_File_FileRef', 'OpenFile', MAIN, refId, 2, fp) === -7);
+  check('QueryFile reports the size and the external file system', call('PPB_Flash_File_FileRef', 'QueryFile', MAIN, refId, info) === 0 && pep.u32(info) === 2 && pep.i32(info + 12) === 3);
+  pep.opts.service = { request: async () => ({ ok: false, error: 'a file dialog needs a click or key press first' }) };
+  const before = pep.res.size;
+  call('PPB_FileChooserTrusted', 'ShowWithoutUserGesture', MAIN, ch, 0, pep.mkVar(undefined), noOut, cc);
+  await new Promise((r) => setTimeout(r, 20));
+  check('a refused dialog creates no file', pep.res.size === before);
+  const saveRc = call('PPB_FileChooserTrusted', 'ShowWithoutUserGesture', MAIN, ch, 1, pep.mkVar('dir/..\\out.txt'), noOut, cc);
+  await new Promise((r) => setTimeout(r, 20));
+  const saveRef = [...pep.res].filter(([, o]) => o.type === 'fileref' && o.kind === 'save').pop()?.[1];
+  check('a save dialog hands out a file named after the suggestion, without a path', saveRc === PP_OK_COMPLETIONPENDING && saveRef?.name === 'out.txt' && /^\/tmp\/flash-runner-files\/\d+\/out\.txt$/.test(saveRef.path), JSON.stringify(saveRef));
+  pep.emu = savedEmu; delete pep.opts.service;
+}
+
 console.log(failed ? `\n${failed} FAILED` : '\nall ok');
 process.exit(failed ? 1 : 0);

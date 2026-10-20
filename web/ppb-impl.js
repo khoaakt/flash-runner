@@ -11,6 +11,7 @@ import { buildFlash } from './ppb-flash.js';
 import { buildMisc } from './ppb-misc.js';
 import { buildGLES2 } from './ppb-gles2.js';
 import { buildSockets } from './ppb-sockets.js';
+import { buildFiles } from './ppb-files.js';
 
 export function buildImpl(host) {
   const impl = {};
@@ -256,6 +257,6 @@ export function buildImpl(host) {
     GetCode(tid, r) { return host.mkVar(ie(r)?.key?.codeStr ?? ''); },
   };
 
-  Object.assign(impl, buildNet(host), buildAudio(host), buildFlash(host), buildMisc(host), buildGLES2(host), buildSockets(host));
+  Object.assign(impl, buildNet(host), buildAudio(host), buildFlash(host), buildMisc(host), buildGLES2(host), buildSockets(host), buildFiles(host));
   return impl;
 }
