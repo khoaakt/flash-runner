@@ -1,0 +1,170 @@
+# Builds a release from a version tag (v0.1.0 ...) and attaches the files as a DRAFT release for you to look over and publish.
+#
+# What goes in is the "no runtime" build only: no Adobe Flash Player and nothing compiled from it (tools/build-extension.mjs --no-runtime checks that
+# itself and the workflow checks again). Users install their own runtime on the settings page. Never change this workflow to bundle a runtime: this
+# project may not redistribute Adobe's binaries (docs/DISTRIBUTION.md).
+#
+# Run it by pushing a tag:   git tag v0.1.0 && git push origin v0.1.0
+# or by hand from the Actions tab ("Run workflow"): that builds everything and keeps the files as workflow artifacts, but publishes nothing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI (tests, builds, secret scan)
+    uses: ./.github/workflows/ci.yml
+
+  helper-macos:
+    name: Helper for Windows and macOS
+    needs: ci
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: native/helper/go.sum
+      - name: Windows installer and macOS package (needs lipo and pkgbuild)
+        run: PARTS="exe darwin pkg" sh tools/build-helper.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: helper-macos
+          path: |
+            native/out/FlashHelper-Setup.exe
+            native/out/FlashHelper.pkg
+          if-no-files-found: error
+
+  build:
+    name: Extension and Linux helper
+    needs: [ci, helper-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: native/helper/go.sum
+      - name: Tools (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binaryen
+
+      - name: The tag matches the extension version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(node -p "require('./extension/manifest.json').version")
+          if [ "$want" != "$have" ]; then echo "::error::tag $GITHUB_REF_NAME but extension/manifest.json says $have"; exit 1; fi
+
+      - name: Emulator (web/emu.wasm)
+        run: sh tools/build-wasm.sh
+      - name: i386 build image, guest userland and the glue program
+        run: |
+          docker build -t flashrunner-i386-dev -f rootfs/Dockerfile.dev rootfs
+          sh rootfs/build.sh
+          sh tools/build-guest.sh
+      - name: Settings UI dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Linux helper package
+        run: PARTS="linux deb" sh tools/build-helper.sh
+      - uses: actions/download-artifact@v8
+        with:
+          name: helper-macos
+          path: native/out
+
+      - name: Extension without Flash Player (Chrome and Firefox)
+        run: node tools/build-extension.mjs --no-runtime --firefox --zip
+      - name: Check that no Flash Player or derived file is inside
+        run: |
+          set -eu
+          for z in dist/flash-runner-extension-no-flash.zip dist/flash-runner-firefox-no-flash.xpi; do
+            unzip -l "$z" | tee /tmp/list.txt
+            if grep -Eqi '\.(so|aot|aot\.gz)$|libpepflash|assets/runtime-aot/.+\.aot' /tmp/list.txt; then echo "::error::$z contains Flash-related files"; exit 1; fi
+            unzip -p "$z" assets/runtimes/runtimes.json | grep -qx '\[\]' || { echo "::error::$z lists a runtime"; exit 1; }
+            unzip -p "$z" NOTICE.txt | grep -q 'does NOT contain Adobe Flash Player'
+          done
+
+      - name: Collect the release files
+        run: |
+          set -eu
+          mkdir -p release
+          cp dist/flash-runner-extension-no-flash.zip dist/flash-runner-firefox-no-flash.xpi release/
+          cp native/out/FlashHelper-Setup.exe native/out/FlashHelper.pkg native/out/flash-helper_amd64.deb release/
+          cp LICENSE-MIT LICENSE-APACHE release/
+          (cd release && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    name: Draft release
+    # only for a pushed tag; a manual run stops after uploading the artifacts
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-files
+          path: release
+      - name: Release notes
+        run: |
+          cat > notes.md <<'EOF'
+          ## What this is
+
+          Play Flash (`.swf`) in Chrome and Firefox without a Flash plugin: the extension runs Adobe's own Flash Player inside a browser tab by emulating a
+          32-bit x86 Linux process in WebAssembly. See the README for what works and what does not.
+
+          ## This release does not contain Adobe Flash Player
+
+          Flash Player is Adobe's / HARMAN's software and cannot be redistributed here. After installing the extension, open its settings page and install a
+          Flash Player runtime you are entitled to use (the version this project is tested with is 32.0.0.363, ia32 PPAPI). Builds from 32.0.0.465 on show
+          Adobe's end-of-life block and do not run; this project does not work around that. Not affiliated with Adobe or HARMAN.
+
+          Flash is end of life and the runtime versions this works with have known security bugs: do not open content you do not trust.
+
+          ## Files
+
+          | file | what |
+          |---|---|
+          | `flash-runner-extension-no-flash.zip` | Chrome / Chromium / Edge / Brave: unzip, then `chrome://extensions` -> Developer mode -> Load unpacked |
+          | `flash-runner-firefox-no-flash.xpi` | Firefox 140+, **unsigned**: Firefox release only installs it as a temporary add-on (`about:debugging`) |
+          | `FlashHelper-Setup.exe`, `FlashHelper.pkg`, `flash-helper_amd64.deb` | the native socket helper (raw sockets, RTMP, optional UDP), unsigned: Windows SmartScreen and macOS Gatekeeper warn once |
+          | `SHA256SUMS` | checksums of the files above |
+
+          The socket helper is optional; the settings page explains when a movie needs it. UDP (RTMFP) is off until `allowUDP` is set in the helper's config
+          (docs/HELPER.md).
+          EOF
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          pre=""
+          case "$GITHUB_REF_NAME" in v0.*|*-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" release/* --draft $pre --title "flash-runner $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
