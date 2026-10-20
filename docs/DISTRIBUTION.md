@@ -5,6 +5,14 @@ has the measurements and the research behind it.
 
 ## What is handed out
 
+**Only the no-runtime build may be given to other people.** `node tools/build-extension.mjs --no-runtime [--firefox] [--zip]` leaves out Adobe Flash Player and the
+AOT bundles (they are compiled from Flash's machine code, so they count as derived from it), writes an empty `assets/runtimes/runtimes.json` and a
+`NOTICE.txt` that says so, and fails (exit 3) if any `.so`, `.aot` or foreign ELF file ended up in the output. Archives are named
+`flash-runner-extension-no-flash.zip` and `flash-runner-firefox-no-flash.xpi`. Without a runtime the extension has nothing to run: the user installs one on the
+settings page (checked: this build plus `--runtime vendor-private/...` in `tools/ext-test.mjs` runs the RTMFP test movie to its PASS square). The default build
+bundles Adobe's binaries, which this project may not redistribute, and is for the builder's own machines. The Linux and macOS installers wrap the default
+build today, so they are not shareable either until they are built from the no-runtime one.
+
 ```mermaid
 flowchart TD
     subgraph linux["Linux"]

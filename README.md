@@ -72,6 +72,11 @@ node tools/build-extension.mjs   # -> dist/extension
 `build-extension.mjs` also bundles the socket-helper installers from `native/out`. If you have not built them (`tools/build-helper.sh`, needs Go
 and podman), run it as `NO_HELPER=1 node tools/build-extension.mjs`.
 
+The default build also copies Adobe's Flash Player from `vendor-private/` into the extension, for your own use. To make something you can hand to
+other people, build with `--no-runtime` (`node tools/build-extension.mjs --no-runtime [--firefox] [--zip]`): it needs nothing from `vendor-private/`,
+contains no Flash Player and nothing compiled from it, checks that itself, and writes `*-no-flash` archives. Each user then installs their own runtime on
+the settings page.
+
 ```mermaid
 flowchart LR
     plugin["libpepflashplayer.so<br/>copied into vendor-private/"] --> build

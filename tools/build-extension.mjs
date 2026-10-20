@@ -1,6 +1,9 @@
 // Assemble the unpacked Chrome extension into dist/extension (load it from chrome://extensions → Load unpacked).
 //   node tools/build-extension.mjs [--zip] [--firefox]
 //   --firefox also writes dist/firefox: the same extension with the manifest changes Firefox needs (tools/firefox/manifest-overlay.json, tools/firefox/overlay.mjs).
+//   --no-runtime (or NO_RUNTIME=1) builds WITHOUT Adobe Flash Player and without anything derived from it (the AOT bundles are compiled from Flash's machine
+//   code): the build needs nothing from vendor-private/, and the user installs their own runtime on the settings page. This is the only build meant to be
+//   handed to other people; the default build bundles Adobe's binaries, which this project may not redistribute (docs/DISTRIBUTION.md).
 // Prerequisites: tools/build-wasm.sh, rootfs/build.sh, tools/build-guest.sh.
 import { cpSync, mkdirSync, rmSync, existsSync, readdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
@@ -9,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const noRuntime = process.argv.includes('--no-runtime') || !!process.env.NO_RUNTIME;
 const out = process.env.EXT_DIR ? resolve(process.env.EXT_DIR) : join(root, 'dist', 'extension');   // EXT_DIR: build somewhere else (the same variable is read by ext-test.mjs)
 const need = (p) => { if (!existsSync(join(root, p))) { console.error(`missing ${p} — run the build steps in README.md first`); process.exit(2); } };
 need('web/emu.wasm'); need('rootfs/out/rootfs.tar'); need('guest/out/pepper-host');
@@ -42,12 +46,12 @@ cpSync(process.env.EMU_WASM || join(root, 'web/emu.wasm'), join(out, 'assets/emu
 cpSync(join(root, 'rootfs/out/rootfs.tar'), join(out, 'assets/rootfs.tar'));
 cpSync(join(root, 'guest/out/pepper-host'), join(out, 'assets/pepper-host'));
 const aotSource = process.env.AOT_DIR ? resolve(process.env.AOT_DIR) : join(root, 'web/runtime-aot');
-execFileSync(process.execPath, [join(root, 'tools/build-plugin-aot.mjs'), '--out', aotSource], { cwd: root, stdio: 'inherit' });
+if (!noRuntime) execFileSync(process.execPath, [join(root, 'tools/build-plugin-aot.mjs'), '--out', aotSource], { cwd: root, stdio: 'inherit' });
 // Ship only executable bundles referenced by the current image manifest. Offline
 // .wasm/.json inspection outputs and stale builds remain local, not triplicated
 // in the installable extension.
 const aotTarget = join(out, 'assets/runtime-aot');
-const aotManifest = JSON.parse(readFileSync(join(aotSource, 'manifest.json'), 'utf8'));
+const aotManifest = noRuntime ? { format: 'flash-runner-plugin-accelerators-v1', mode: 'bounded', images: [] } : JSON.parse(readFileSync(join(aotSource, 'manifest.json'), 'utf8'));
 mkdirSync(aotTarget, { recursive: true });
 
 // Adobe Flash Player runtimes shipped inside the extension: ia32 PPAPI builds from before Adobe's end-of-life block (kept out of the repo in vendor-private/).
@@ -57,7 +61,7 @@ const RUNTIMES = [
 ];
 mkdirSync(join(out, 'assets', 'runtimes'), { recursive: true });
 const bundled = [];
-for (const r of RUNTIMES) {
+for (const r of noRuntime ? [] : RUNTIMES) {
   const src = join(root, 'vendor-private', r.file);
   if (!existsSync(src)) { console.error(`missing vendor-private/${r.file} — the extension bundles the Flash runtimes from there`); process.exit(2); }
   const bytes = readFileSync(src);
@@ -86,12 +90,18 @@ for (const f of HELPERS) {
   cpSync(src, join(out, 'helper', f));
 }
 
-writeFileSync(join(out, 'NOTICE.txt'), `flash-runner
-=============
-This build contains Adobe Flash Player (assets/runtimes/*.so: 32.0.0.363 and 26.0.0.151, ia32 PPAPI). Adobe Flash Player is proprietary
+const flashNotice = noRuntime
+  ? `This build does NOT contain Adobe Flash Player, nor anything made from it. Adobe Flash Player is proprietary software of Adobe Inc. / HARMAN and
+is not covered by this project's licence: install a runtime you are entitled to use on the extension's settings page (32.0.0.363, ia32 PPAPI, is the
+version this project is tested with). This project is not affiliated with or endorsed by Adobe.
+`
+  : `This build contains Adobe Flash Player (assets/runtimes/*.so: 32.0.0.363 and 26.0.0.151, ia32 PPAPI). Adobe Flash Player is proprietary
 software of Adobe Inc. / HARMAN; it is included unmodified and is not covered by this project's licence. It is bundled for personal use:
 check the licence terms before passing this build to anyone else. This project is not affiliated with or endorsed by Adobe.
-
+`;
+writeFileSync(join(out, 'NOTICE.txt'), `flash-runner
+=============
+${flashNotice}
 Bundled third-party components
 - assets/rootfs.tar: a minimal Debian GNU/Linux (bookworm, i386) userland — GNU C Library, libstdc++, libgcc_s (LGPL-2.1+/GPL with
   runtime exception). Source: https://packages.debian.org/source/bookworm/glibc and /gcc-12
@@ -100,6 +110,23 @@ Bundled third-party components
 - Settings and popup: React, Radix UI, Tailwind CSS, shadcn/ui, lucide icons, sonner (MIT).
 - helper/: the socket helper (Go standard library; golang.org/x/sys, BSD-3-Clause) packaged as installers for Windows, macOS and Linux.
 `);
+// the no-runtime build must hold nothing of Adobe's: no ELF shared object, no runtime list entries, no AOT bundle (those are compiled from Flash's code)
+function assertNoFlash(dir) {
+  const bad = [];
+  const ELF = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) { walk(p); continue; }
+      const isGuestHost = p === join(dir, 'assets', 'pepper-host');             // our own i386 host program, built from guest/pepper-host
+      if (/\.(so|aot|aot\.gz)$/.test(e.name) || (!isGuestHost && statSync(p).size > 4 && readFileSync(p).subarray(0, 4).equals(ELF))) bad.push(p);
+    }
+  };
+  walk(dir);
+  if (readFileSync(join(dir, 'assets', 'runtimes', 'runtimes.json'), 'utf8').trim() !== '[]') bad.push('assets/runtimes/runtimes.json is not empty');
+  if (bad.length) { console.error('the no-runtime build contains Flash-related files:\n  ' + bad.join('\n  ')); process.exit(3); }
+}
+if (noRuntime) { assertNoFlash(out); console.log('no-runtime build: no Flash Player and no AOT bundle inside (checked)'); }
 const size = (p) => { let t = 0; const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const f = join(d, e.name); e.isDirectory() ? walk(f) : (t += statSync(f).size); } }; walk(p); return t; };
 console.log(`built ${out}  (${(size(out) / 1048576).toFixed(1)} MiB)`);
 // Zip a directory's contents: `zip` where it exists, otherwise tar's zip writer (Windows ships bsdtar).
@@ -110,7 +137,7 @@ function makeZip(dir, file) {
   try { execFileSync('zip', ['-qr', file, '.'], { cwd: dir }); } catch (e) { if (e.code !== 'ENOENT') throw e; execFileSync(TAR, ['--format', 'zip', '-cf', file, '-C', dir, ...readdirSync(dir)]); }
 }
 if (process.argv.includes('--zip')) {
-  const zip = join(root, 'dist', 'flash-runner-extension.zip');
+  const zip = join(root, 'dist', noRuntime ? 'flash-runner-extension-no-flash.zip' : 'flash-runner-extension.zip');
   makeZip(out, zip);
   console.log('zip:', zip);
 }
@@ -123,7 +150,7 @@ if (process.argv.includes('--firefox')) {
   writeFileSync(join(ffOut, 'manifest.json'), JSON.stringify(firefoxManifest(JSON.parse(readFileSync(join(ffOut, 'manifest.json'), 'utf8'))), null, 2) + '\n');
   console.log(`built ${ffOut}  (Firefox ${gecko.strict_min_version}+, add-on id ${gecko.id})`);
   if (process.argv.includes('--zip')) {
-    const xpi = join(root, 'dist', 'flash-runner-firefox.xpi');
+    const xpi = join(root, 'dist', noRuntime ? 'flash-runner-firefox-no-flash.xpi' : 'flash-runner-firefox.xpi');
     makeZip(ffOut, xpi);
     console.log('xpi (unsigned):', xpi);
   }
