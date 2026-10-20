@@ -100,7 +100,13 @@ Checked in Chrome with 32.0.0.363 (`tools/ext-test.mjs`, `tests/ext/`):
 - Vector and bitmap drawing, text (device fonts and input fields), mouse and keyboard, fullscreen, clipboard paste, Flash's right-click menu.
 - Video (FLV, and H.264/AAC MP4 through `NetStream`), audio, Shared Objects (kept in IndexedDB), HTTP(S) requests, `crossdomain.xml`.
 - Stage3D through WebGL2 (the `gpu3d` setting, on by default).
-- `ExternalInterface` in both directions (page to Flash is asynchronous, because the movie runs in a worker).
+- `ExternalInterface` in both directions (page to Flash is asynchronous, because the movie runs in a worker), also on pages whose CSP forbids `eval`
+  (the usual call shapes run without it) and for `javascript:` links.
+- RTMP streaming (`NetConnection` / `NetStream`) through the socket helper.
+- File dialogs (`FileReference` open and save; a save becomes a browser download), printing (`PrintJob`: the PDF Flash makes goes to the browser's print),
+  camera and microphone (off until you list the site in the settings), and gamepads (checked in Chrome only).
+- RTMFP connections: with UDP switched on in the helper (`allowUDP`, see [docs/HELPER.md](docs/HELPER.md)), `NetConnection.connect("rtmfp://...")`
+  completes against the test server in `tools/`. Streams, groups and peer-to-peer over RTMFP are untried.
 
 ## What does not
 
@@ -108,7 +114,9 @@ Checked in Chrome with 32.0.0.363 (`tools/ext-test.mjs`, `tests/ext/`):
   no measurement of a real game, so expect nothing in particular.
 - **Raw sockets** (`Socket`, `XMLSocket`) need the small native [socket helper](docs/HELPER.md), because a browser cannot open raw TCP. The
   settings page offers its installer.
-- Not available: RTMP/RTMFP streaming, UDP, camera and microphone, file dialogs, gamepads, printing, and pages whose CSP forbids `eval`.
+- Not available or not proven: anything over RTMFP after the connection is made (no real RTMFP server was available to test against), real camera and
+  microphone hardware (tests use generated media), the browser's own print and file-picker dialogs under automation (checked by their results, not by
+  looking at the dialog), gamepads in Firefox, and scripts of an unusual shape on pages whose CSP forbids `eval`.
 - Some games refuse to start without their publisher's own desktop launcher; nothing in a browser can stand in for that.
 
 ## For developers

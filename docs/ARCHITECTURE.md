@@ -101,7 +101,7 @@ Observed by tracing a real 32.0.0.363 build (`web/flash-smoke.mjs --trace`) and 
   script in the embedding page. Without a bridge nothing is evaluated locally either (no `eval`/`Function` in the worker); the stub window
   is read-only data (own properties only). Verified in Chrome: same-domain allowed, `never` blocked, cross-domain blocked by default and
   allowed with `always` (`tests/ext/ei2.html`, `ei-never.html`, `ei-cross*.html`).
-- Limits: pages whose CSP forbids `eval` cannot receive `ExecuteScript`; raw Flash sockets are not available inside the emulator (it has no
+- Limits: on pages whose CSP forbids `eval` only the script shapes Flash really sends run (without `eval`, see STATUS.md); raw Flash sockets are not available inside the emulator (it has no
   network stack); the extension provides them through the native socket helper (see [HELPER.md](HELPER.md)).
 
 The same path carries the page scripting calls. In the extension a script request travels worker, `player.js`, parent page:

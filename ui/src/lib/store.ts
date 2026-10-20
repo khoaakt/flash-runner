@@ -15,6 +15,8 @@ export type Settings = {
   netCache: boolean;
   runtimeVersion: string;
   disabledSites: string[];
+  /** Sites whose Flash movies may ask for the camera and microphone (the player frame is only given the permission there). Empty by default. */
+  mediaSites: string[];
   /** Print the player's messages to the browser console. Off by default. */
   log: boolean;
 };

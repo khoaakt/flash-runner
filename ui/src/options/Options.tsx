@@ -82,7 +82,8 @@ export function Options() {
             </SettingRow>
           </Section>
 
-          <DisabledSites value={settings.disabledSites} onCommit={(sites) => change({ disabledSites: sites })} />
+          <SiteList id="disabledSites" title="Sites where Flash is disabled" value={settings.disabledSites} onCommit={(sites) => change({ disabledSites: sites })} />
+          <SiteList id="mediaSites" title="Sites that may use the camera and microphone" help="One host per line. Empty means no site: Flash then sees no camera or microphone. The browser still asks before it shares anything." value={settings.mediaSites} onCommit={(sites) => change({ mediaSites: sites })} />
         </>
       )}
       <Toaster position="bottom-right" />
@@ -224,16 +225,16 @@ function InstallFlow() {
   );
 }
 
-function DisabledSites({ value, onCommit }: { value: string[]; onCommit: (sites: string[]) => void }) {
+function SiteList({ id, title, help = 'One host per line.', value, onCommit }: { id: string; title: string; help?: string; value: string[]; onCommit: (sites: string[]) => void }) {
   const [text, setText] = useState(value.join('\n'));
   useEffect(() => { setText(value.join('\n')); }, [value]);
   const sites = (t: string) => t.split('\n').map((x) => x.trim().toLowerCase()).filter(Boolean);
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium"><label htmlFor="disabledSites">Sites where Flash is disabled</label></h2>
+      <h2 className="text-sm font-medium"><label htmlFor={id}>{title}</label></h2>
       <Textarea
-        id="disabledSites"
+        id={id}
         value={text}
         spellCheck={false}
         placeholder="example.com"
@@ -241,7 +242,7 @@ function DisabledSites({ value, onCommit }: { value: string[]; onCommit: (sites:
         onChange={(e) => setText(e.target.value)}
         onBlur={() => { const next = sites(text); if (next.join('\n') !== value.join('\n')) onCommit(next); }}
       />
-      <p className="text-[13px] text-muted-foreground">One host per line.</p>
+      <p className="text-[13px] text-muted-foreground">{help}</p>
     </section>
   );
 }
