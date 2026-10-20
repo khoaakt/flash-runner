@@ -435,6 +435,17 @@ check('resource ids start above the reserved loops (1 main, 2 audio)', pep.nextR
   check('id is UTF-16 and NUL terminated', id[0] === 80 && id[1] === 0 && id[2] === 97 && id[8] === 65 && id[9] === 0 && id[10] === 0 && id[11] === 0, JSON.stringify(id));
   check('unused pad slots stay zero', pep.u32(it(2) + 464) === 0 && pep.u32(it(3)) === 0);
 }
+// ---- Printing: PP_PrintSettings_Dev is 60 bytes (printable_area, content_area, paper_size, dpi, orientation, scaling, grayscale, format)
+{
+  pep.instances.set(1, { id: 1 });
+  const pr = call('PPB_Printing', 'Create', MAIN, 1), p = pep.alloc(60);
+  const rc = call('PPB_Printing', 'GetDefaultPrintSettings', MAIN, pr, p, { func: 0, user: 0, flags: 0 });
+  const at = (o) => pep.i32(p + o);
+  check('default print settings: Letter, 72 dpi, no margins', rc === 0 && [at(0), at(4), at(8), at(12)].join() === '0,0,612,792' && [at(16), at(20), at(24), at(28)].join() === '0,0,612,792' && at(32) === 612 && at(36) === 792 && at(40) === 72, [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40].map(at).join());
+  check('default print settings: normal, no scaling, colour, PDF', at(44) === 0 && at(48) === 0 && at(52) === 0 && at(56) === 2);
+  check('settings for a bad resource are refused', call('PPB_Printing', 'GetDefaultPrintSettings', MAIN, 9999, p, { func: 0, user: 0, flags: 0 }) < 0);
+}
+
 // ---- File dialogs: the chooser asks the frame, copies the pick into the guest, FileRef/Flash_File_FileRef give Flash a descriptor
 {
   const { acceptList } = await import('./frame-services.js');

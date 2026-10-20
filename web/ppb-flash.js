@@ -1,5 +1,6 @@
 // Flash-specific and "Dev"/"Private" PPB interfaces Pepper Flash probes for at startup.
 // Anything not implemented here falls through to the generic "unimplemented, returns 0" path in pepper.js.
+import { collectPdf } from './ppb-print.js';
 import { PP_OK, PP_OK_COMPLETIONPENDING, PP_ERROR_FAILED, PP_ERROR_BADRESOURCE, PP_ERROR_BADARGUMENT, PP_ERROR_NOTSUPPORTED, PP_ERROR_ABORTED, PP_ERROR_FILENOTFOUND, PP_ERROR_USERCANCEL, VT } from './pp-consts.js';
 
 const LOCAL_ROOT = '/home/flash/.flash/ModuleLocal';
@@ -308,7 +309,23 @@ export function buildFlash(host) {
     Quit(tid, r) { const o = host.getRes(r, 'flashloop'); if (!o) return; o.quit = true; const l = host.loops.get(o.parent); if (l) host.pump(l); },
   };
 
-  impl.PPB_Flash_Print = { InvokePrinting() {} };
+  // PrintJob.start(): the browser's side of printing (PPP_Printing) runs here, see ppb-print.js
+  impl.PPB_Flash_Print = {
+    InvokePrinting(tid, instance) {
+      if (host.printing) return;
+      host.printing = true;
+      setTimeout(async () => {                    // after the movie's start/addPage/send handler has returned
+        try {
+          const pdf = await collectPdf(host, instance);
+          host.log(`[print] PDF ${pdf.length} bytes, header ${String.fromCharCode(...pdf.subarray(0, 8))}`);
+          if (host.opts.service) {
+            const r = await host.opts.service.request('print-pdf', { bytes: pdf });
+            host.log(r.ok ? `[print] frame: ${JSON.stringify(r.value)}` : `[print] frame refused: ${r.error}`);
+          }
+        } catch (e) { host.log(`[print] failed: ${e && e.message}`); } finally { host.printing = false; }
+      }, 300);
+    },
+  };
   impl.PPB_NetworkMonitor = { Create() { return 0; }, UpdateNetworkList() { return PP_ERROR_NOTSUPPORTED; }, IsNetworkMonitor() { return 0; } };
   return impl;
 }

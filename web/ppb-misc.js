@@ -51,7 +51,19 @@ export function buildMisc(host) {
   impl.PPB_AudioInput = { ...enumerable('audioinput', 1, []), IsAudioInput(tid, r) { return host.getRes(r, 'audioinput') ? 1 : 0; } };
   impl.PPB_AudioOutput = { ...enumerable('audiooutput', 3, ['Default']), IsAudioOutput(tid, r) { return host.getRes(r, 'audiooutput') ? 1 : 0; } };
   impl.PPB_VideoCapture = { ...enumerable('videocapture', 2, []), IsVideoCapture(tid, r) { return host.getRes(r, 'videocapture') ? 1 : 0; }, ReuseBuffer() { return PP_ERROR_FAILED; } };
-  impl.PPB_Printing = { Create() { return 0; }, GetDefaultPrintSettings() { return PP_ERROR_NOTSUPPORTED; } };
+  // PPB_Printing(Dev): Flash asks for the page geometry before it prints. US Letter, 72 dpi, no margins, PDF output.
+  impl.PPB_Printing = {
+    Create(tid, instance) { return host.newRes({ type: 'printing', instance }); },
+    GetDefaultPrintSettings(tid, r, p, cc) {
+      if (!host.getRes(r, 'printing')) return host.complete(tid, cc, PP_ERROR_BADRESOURCE);
+      const W = 612, H = 792;
+      for (const base of [0, 16]) { host.wi32(p + base, 0); host.wi32(p + base + 4, 0); host.wi32(p + base + 8, W); host.wi32(p + base + 12, H); }   // printable_area, content_area
+      host.wi32(p + 32, W); host.wi32(p + 36, H);          // paper_size
+      host.wi32(p + 40, 72); host.wi32(p + 44, 0); host.wi32(p + 48, 0); host.wi32(p + 52, 0);   // dpi, orientation normal, scaling, colour
+      host.wi32(p + 56, 2);                                // PP_PRINTOUTPUTFORMAT_PDF: the only format Pepper Flash offers
+      return host.complete(tid, cc, PP_OK);
+    },
+  };
 
   // ---- scripting (deprecated Var + Instance_Private) ----------------------------------------
   // With opts.page = { request(msg) -> Promise<reply>, post(msg) } the window/document objects are the embedding

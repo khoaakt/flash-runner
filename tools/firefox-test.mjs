@@ -14,6 +14,7 @@ import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readF
 import { createServer } from 'node:http';
 import { extname, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ARM_FIREFOX, REPORT_FIREFOX, describePdf, expectedPrint } from './lib/print-spy.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,6 +26,7 @@ const addon = resolve(arg('--addon', join(root, 'dist/firefox')));
 let page = arg('--page', 'tests/ext/compat.html');   // --sockets replaces it with tests/ext/sock.html
 const pickText = arg('--pick-text', null);          // content of the file the player frame's open dialog is answered with
 const expectDownload = arg('--expect-download', null);   // regex a downloaded file's content must match
+const expectPrint = process.argv.includes('--expect-print');   // the movie's PrintJob must hand the frame a PDF with a red 100x100 image on a Letter page
 const saveDir = arg('--save-dir', null) ? resolve(arg('--save-dir', null)) : null;            // downloads of the player frame's save dialog go here
 const withSockets = process.argv.includes('--sockets');   // run tests/ext/sock.html against a local echo server through the native helper (needs the helper installed for Firefox)
 const seconds = +arg('--seconds', 15);
@@ -156,6 +158,7 @@ try {
     await wd('POST', `${S}/frame`, { id: el });
     try { return await exec(script); } finally { await wd('POST', `${S}/frame/parent`, {}); }
   };
+  if (expectPrint) console.log('   print spy =>', JSON.stringify(await inPlayerFrame('return ' + ARM_FIREFOX)));
   if (pickText !== null) {   // headless Firefox cancels a file picker at once and cannot be driven: give the player frame's <input type=file> a file the moment it is added (before the cancel arrives) and fire change
     console.log('   file picker hook =>', JSON.stringify(await inPlayerFrame(`new MutationObserver((muts, obs) => { for (const m of muts) for (const n of m.addedNodes) if (n.localName === 'input' && n.type === 'file') { const dt = new DataTransfer(); dt.items.add(new File([${JSON.stringify(pickText)}], 'pick.txt', { type: 'text/plain' })); n.files = dt.files; document.documentElement.setAttribute('data-fed', 'accept=' + n.accept + ' multiple=' + n.multiple); n.dispatchEvent(new Event('change')); } }).observe(document.body, { childList: true }); return 'armed';`)));
   }
@@ -169,6 +172,7 @@ try {
     console.log('   sent', clicks ? 'clicks ' + clicks : '', keys ? 'keys ' + keys : '');
   }
   if (pickText !== null) { const fed = await inPlayerFrame("return document.documentElement.getAttribute('data-fed') || 'the picker was never given a file'"); console.log('   file picker =>', JSON.stringify(fed)); check('the player frame opened a file input and it was answered', /^accept=/.test(String(fed)), String(fed)); }
+  if (expectPrint) { await sleep(2500); const r = describePdf(await inPlayerFrame('return ' + REPORT_FIREFOX)); console.log('   print report =>', JSON.stringify(r)); check('the PrintJob of the movie gave the frame a Letter-page PDF with its red 100x100 image', expectedPrint(r), JSON.stringify(r)); }
   if (saveDir) { await sleep(2500); const got = readdirSync(saveDir).filter((n) => !/.part$/.test(n)); const files = got.map((n) => [n, readFileSync(join(saveDir, n), 'utf8').slice(0, 80)]); console.log('   downloaded files:', JSON.stringify(files)); if (expectDownload) check('Flash saved a file through the browser download', files.some(([, t]) => new RegExp(expectDownload).test(t)), JSON.stringify(files)); }
   mkdirSync(shots, { recursive: true });
   const png = await wd('GET', `${S}/screenshot`);

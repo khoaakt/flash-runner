@@ -103,6 +103,18 @@ Evidence (`tests/ext/file.html`, `FileProbe.hx`; both browsers): the Open button
 
 Not covered: the native dialog itself in Firefox (above), `FileReferenceList` and multiple selection, `FileReference.upload()` and `download()` (other interfaces), files above 64 MiB, a save of an empty file, and a browser setting that asks where to save each download.
 
+## PoC: printing
+
+Branch `poc/missing-features`. `PrintJob.start()` made two calls and nothing came of them: `PPB_Flash_Print::InvokePrinting(instance)` (a no-op stub) and `PPB_Printing(Dev);0.7::Create` / `GetDefaultPrintSettings` (answered NOTSUPPORTED). The pages are not produced by Pepper calls from Flash: in Chrome the *browser* answers `InvokePrinting` by driving the plugin's `PPP_Printing(Dev)` interface. This host plays that part (`web/ppb-print.js`), after a 300 ms delay so the movie's `start` / `addPage` / `send` handler has returned:
+1. `PPP_Printing(Dev);0.6` (found by `PPP_GetInterface`, called as guest function pointers like `PPP_Messaging`): `QuerySupportedFormats` answers `0x2`, **PDF only** (no raster), so the settings say PDF.
+2. `Begin(instance, settings)` returns the page count (1 for the probe), `PrintPages(0..n-1)` returns a `PPB_Buffer` holding a complete PDF (`%PDF-1.4`, a Letter `MediaBox [0 0 612 792]`, the added object as a deflated 100x100 RGB image), `End`.
+3. The PDF bytes go to the frame's `print-pdf` service (`web/frame-services.js`), which needs a user activation, puts them in a hidden `<iframe>` with a `blob:` URL for the browser's own PDF viewer and calls its `print()`, falling back to opening the PDF in a tab.
+`GetDefaultPrintSettings` reports US Letter, 72 dpi, no margins (unit-tested layout, 60 bytes).
+
+Evidence (`tests/ext/print.html`, `PrintProbe.hx`; click the Print button; Chrome and Firefox 158): `--expect-print` in `tools/ext-test.mjs` and `tools/firefox-test.mjs` records the PDF the frame was given (Chrome wraps `URL.createObjectURL`, Firefox watches the iframe it adds) and checks in Node: one print, `%PDF-1.4`, MediaBox `[0 0 612 792]`, an image of 100x100 whose inflated first pixel is `[255, 0, 0]`, the red square the movie added.
+
+Not verified: the browser's print dialog and the printed output (headless browsers show none; a frame whose PDF viewer cannot be printed falls back to a tab), paper sizes other than Letter, several pages, page ranges, `PrintJob.orientation` and the other settings the movie reads, and printing an object that is not on the stage (the probe's page was white until the sprite was also on the stage; not investigated further).
+
 ## Debug log setting (extension)
 
 `log` (default `false`) in `extension/options/runtime-store.js`, switch "Debug log" under Troubleshooting in the options page

@@ -11,6 +11,8 @@ export function createFrameServices(player) {
     'pick-files': (args, ctx) => pickFiles(args || {}, ctx),
     /** Save: {name, bytes} -> a download of the bytes (the browser decides where it goes). */
     'save-file': (args) => saveFile(args || {}),
+    /** Print: {bytes} (a PDF made by the movie's PrintJob) -> shown to the browser's PDF viewer in a hidden frame and printed; needs a user activation like any print dialog. */
+    'print-pdf': (args, ctx) => printPdf(args || {}, ctx),
   };
 }
 
@@ -81,4 +83,25 @@ export function watchGamepads(send, { intervalMs = 16 } = {}) {
   }, 250);
   tick();
   return () => { clearInterval(handle); clearInterval(watch); };
+}
+
+export function pdfInfo(bytes) {
+  const head = String.fromCharCode(...bytes.subarray(0, 5));
+  const text = new TextDecoder('latin1').decode(bytes);
+  return { valid: head === '%PDF-' && /%%EOF\s*$/.test(text), pages: (text.match(/\/Type\s*\/Page(?![A-Za-z])/g) || []).length, size: bytes.length };
+}
+
+async function printPdf({ bytes }, ctx) {
+  const info = pdfInfo(bytes);
+  if (!info.valid) throw new Error('not a PDF');
+  if (!ctx?.active) throw new Error('printing needs a click or key press first');
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;height:1056px;border:0';
+  frame.src = url; document.body.append(frame);
+  await new Promise((resolve) => { frame.addEventListener('load', resolve, { once: true }); setTimeout(resolve, 3000); });
+  let via = 'frame';
+  try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch { window.open(url, '_blank'); via = 'tab'; }   // a viewer that cannot be printed from a frame: show it in a tab
+  setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 120000);
+  return { ...info, via };
 }

@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
+import { ARM_CHROME as PRINT_ARM, REPORT_CHROME as PRINT_REPORT, describePdf, expectedPrint } from './lib/print-spy.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,6 +36,7 @@ let pickFile = arg('--pick-file', null);       // path of a file the player fram
 const pickText = arg('--pick-text', null);       // same, with the content given here (a temporary file is made)
 const expectDownload = arg('--expect-download', null);   // regex a downloaded file's content must match (with --save-dir)
 let fileDialogs = 0;
+const expectPrint = process.argv.includes('--expect-print');   // the movie's PrintJob must hand the frame a PDF with a red 100x100 image on a Letter page
 const saveDir = arg('--save-dir', null) ? resolve(arg('--save-dir', null)) : null;           // downloads (the player frame's save dialog) are accepted into this directory and listed at the end
 const clip = arg('--clip', null);                 // text placed on the clipboard (from inside the player frame) before the clicks
 const keys = arg('--keys', '');                  // comma list of DOM key names pressed (with real key events) after the clicks, e.g. a,Enter,ArrowLeft
@@ -252,6 +254,7 @@ if (customPage) {
   if (process.env.DEBUG_SESSIONS) console.log([...sessions.values()].map((v) => v.type + ' ' + v.url).join('\n'));
   console.log('input route:', playerSession && frameRect ? 'player frame session' : 'page target (no OOPIF session found)');
   const inFrame = async (expr) => { if (!playerSession) return 'no player session'; const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, playerSession.sid); return r.exceptionDetails ? 'ERR ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text) : r.result.value; };
+  if (expectPrint) await inFrame(PRINT_ARM);
   if (saveDir) { mkdirSync(saveDir, { recursive: true }); await send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: saveDir }); }
   if (pickFile && playerSession) {   // answer the player frame's file dialog with this file (the input is real: Chrome reports that it was asked to open the chooser)
     const sid = playerSession.sid;
@@ -344,6 +347,11 @@ if (customPage) {
     if (expectClipboard !== null) check(`the movie wrote "${expectClipboard}" to the clipboard`, calls.includes('write:' + expectClipboard) && calls.includes('"ok"') && !calls.includes('ERR'), calls);
   }
   if (process.env.EXT_TEST_GREP) console.log(logs.filter((l) => new RegExp(process.env.EXT_TEST_GREP).test(l)).join(String.fromCharCode(10)));   // every console line matching this regex
+  if (expectPrint) {
+    await sleep(2500);
+    const r = describePdf(await inFrame(PRINT_REPORT)); console.log('print report:', JSON.stringify(r));
+    check('the PrintJob of the movie gave the frame a Letter-page PDF with its red 100x100 image', expectedPrint(r), JSON.stringify(r));
+  }
   if (saveDir) { await sleep(1500); const got = readdirSync(saveDir); const files = got.map((n) => [n, readFileSync(join(saveDir, n), 'utf8').slice(0, 80)]); console.log('downloaded files:', JSON.stringify(files)); if (expectDownload) check('Flash saved a file through the browser download', files.some(([, t]) => new RegExp(expectDownload).test(t)), JSON.stringify(files)); }
   if (pickFile) { console.log('file dialogs opened in the player frame:', fileDialogs); check('the player frame asked the browser for a file dialog', fileDialogs >= 1, String(fileDialogs)); }
   if (frameEval) console.log('frame post-eval =>', JSON.stringify(await inFrame('window.__fe')));
