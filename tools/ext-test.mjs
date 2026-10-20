@@ -16,6 +16,7 @@ import { join, resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import { ARM_CHROME as PRINT_ARM, REPORT_CHROME as PRINT_REPORT, describePdf, expectedPrint } from './lib/print-spy.mjs';
+import { decodePacket, encodePacket, parseHello, responderHello, CHUNK } from './lib/rtmfp-mini.mjs';
 import { writeFakeCamera, writeFakeMicrophone } from './lib/fake-media.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
@@ -91,6 +92,22 @@ if (process.argv.includes('--native')) {          // echo + socket policy server
   await new Promise((r) => sockServer.listen(0, '127.0.0.1', r)); sockPort = sockServer.address().port;
 }
 const noHelper = process.argv.includes('--no-helper');   // run sock.swf with NO helper registered in the profile: the notice must appear
+// --udp-server: a UDP server on loopback that records what Flash sends (RTMFP rides on UDP) and answers once, and a helper config that allows UDP and loopback
+let udpServer = null; const udpSeen = [];
+if (process.argv.includes('--udp-server')) {
+  const { createSocket } = await import('node:dgram');
+  const cfgFile = join(profileDir, 'sockets-udp.json'); writeFileSync(cfgFile, JSON.stringify({ allowPrivate: true, allowUDP: true })); process.env.FLASHRUNNER_SOCKETS_CONFIG = cfgFile;
+  udpServer = createSocket('udp4');
+  // answers like the first step of an RTMFP server (tools/lib/rtmfp-mini.mjs): a responder hello (0x70) to every hello (0x30)
+  udpServer.on('message', (msg, rinfo) => {
+    let p = null; try { p = decodePacket(msg); } catch { /* not RTMFP */ }
+    udpSeen.push({ len: msg.length, from: rinfo.port, sid: p?.sid, checksumOk: p?.ok, chunks: (p?.chunks || []).map((c) => c.type.toString(16)) });
+    const hello = p?.chunks.find((c) => c.type === CHUNK.HELLO);
+    if (hello) udpServer.send(encodePacket([responderHello(parseHello(hello.data).tag)], p.timestamp ?? 0), rinfo.port, rinfo.address);
+  });
+  await new Promise((r) => udpServer.bind(0, '127.0.0.1', r));
+}
+const udpQuery = udpServer ? 'url=' + encodeURIComponent('rtmfp://127.0.0.1:' + udpServer.address().port + '/app') : '';
 const sockQuery = sockPort || (noHelper ? 59999 : 0);     // a high port nothing listens on: Flash itself refuses ports below 1024 without a policy file, long before the helper
 const chrome = spawn(CHROME, [
   `--user-data-dir=${profileDir}`, '--remote-debugging-pipe', '--enable-unsafe-extension-debugging',
@@ -220,7 +237,7 @@ if (viewerFile) {
 }
 
 if (customPage) {
-  const cp = await newTab(openUrl || `${base}/${customPage}${sockQuery ? (customPage.includes('?') ? '&' : '?') + 'sock=' + sockQuery : ''}`);
+  const cp = await newTab(openUrl || `${base}/${customPage}${sockQuery ? (customPage.includes('?') ? '&' : '?') + 'sock=' + sockQuery : ''}${udpQuery ? (customPage.includes('?') ? '&' : '?') + udpQuery : ''}`);
   await sleep(seconds * 1000);
   await stopProfiles();
   if (noShots) { console.log(logs.filter((l) => /\[flash\]|EXC/.test(l)).join('\n')); cleanup(); process.exit(0); }
@@ -240,6 +257,12 @@ if (customPage) {
     cleanup(); process.exit(0);
   }
   await shot('custom-before.png');
+  if (udpServer) {
+    console.log('udp datagrams the server saw:', JSON.stringify(udpSeen.slice(0, 4)), 'count', udpSeen.length);
+    check('Flash sent RTMFP hello datagrams through the helper (valid checksum, chunk 0x30)', udpSeen.length >= 1 && udpSeen[0].checksumOk && udpSeen[0].chunks.includes('30'), JSON.stringify(udpSeen.slice(0, 3)));
+    check('after our responder hello Flash sent its initial keying chunk (0x38)', udpSeen.some((u) => u.chunks.includes('38')), JSON.stringify(udpSeen.slice(0, 6)));
+    check('Flash read the reply through the helper', logs.some((l) => /\[udp\] first datagram received: \d+ bytes from 127\.0\.0\.1:/.test(l)), logs.filter((l) => /\[udp\]/.test(l)).join(' | '));
+  }
   if (sockPort) {                                 // sock.swf reports what happened through navigateToURL: the tab Chrome opened for it carries the result
     const { targetInfos } = await send('Target.getTargets');
     const rep = targetInfos.map((t) => t.url).find((u) => u.startsWith('http://report.invalid/'));

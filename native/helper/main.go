@@ -48,6 +48,7 @@ type config struct {
 	AllowHosts   []string `json:"allowHosts"`
 	DenyHosts    []string `json:"denyHosts"`
 	MaxSockets   int      `json:"maxSockets"`
+	AllowUDP     bool     `json:"allowUDP"` // RTMFP: see udp.go
 }
 
 type request struct {
@@ -146,6 +147,7 @@ type helper struct {
 	w      io.Writer
 	mu     sync.Mutex
 	socks  map[int64]*sock
+	udps   map[int64]*udpSock
 	nextID int64
 	allow  []*regexp.Regexp
 	deny   []*regexp.Regexp
@@ -218,6 +220,9 @@ func (h *helper) resolveTarget(ctx context.Context, host string) (string, error)
 func addrMap(a net.Addr) map[string]any {
 	if t, ok := a.(*net.TCPAddr); ok {
 		return map[string]any{"ip": t.IP.String(), "port": t.Port}
+	}
+	if u, ok := a.(*net.UDPAddr); ok {
+		return map[string]any{"ip": u.IP.String(), "port": u.Port}
 	}
 	return map[string]any{"ip": "", "port": 0}
 }
@@ -294,7 +299,7 @@ func (h *helper) get(id int64) *sock { h.mu.Lock(); defer h.mu.Unlock(); return 
 func (h *helper) handle(m request) {
 	switch m.T {
 	case "hello":
-		h.reply(m.Rid, map[string]any{"version": version, "allowPrivate": h.cfg.AllowPrivate})
+		h.reply(m.Rid, map[string]any{"version": version, "allowPrivate": h.cfg.AllowPrivate, "udp": h.cfg.AllowUDP})
 	case "connect":
 		h.mu.Lock()
 		n := len(h.socks)
@@ -396,6 +401,10 @@ func (h *helper) handle(m request) {
 			go h.readLoop(s, tc)
 			h.reply(m.Rid, nil)
 		}()
+	case "resolve": // host name -> addresses (HostResolver for RTMFP); the private-address rule is applied when a socket is used, not here
+		go h.resolveNames(m)
+	case "udp-bind", "udp-send", "udp-close":
+		h.handleUDP(m)
 	default:
 		h.fail(m.Rid, coded("EINVAL", "unknown request "+m.T), "EINVAL")
 	}
@@ -420,7 +429,7 @@ func loadConfig() config {
 
 // serve runs the native messaging protocol on stdin/stdout until Chrome closes the pipe.
 func serve() {
-	h := &helper{cfg: loadConfig(), w: os.Stdout, socks: map[int64]*sock{}}
+	h := &helper{cfg: loadConfig(), w: os.Stdout, socks: map[int64]*sock{}, udps: map[int64]*udpSock{}}
 	if h.cfg.AllowHosts != nil {
 		for _, g := range h.cfg.AllowHosts {
 			h.allow = append(h.allow, globToRe(g))
@@ -458,6 +467,15 @@ func serve() {
 	h.mu.Unlock()
 	for _, s := range all {
 		h.shutdown(s)
+	}
+	h.mu.Lock()
+	us := make([]*udpSock, 0, len(h.udps))
+	for _, u := range h.udps {
+		us = append(us, u)
+	}
+	h.mu.Unlock()
+	for _, u := range us {
+		h.removeUDP(u)
 	}
 }
 

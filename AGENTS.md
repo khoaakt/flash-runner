@@ -32,7 +32,7 @@ cargo test -p emu --lib                                           # ~30 s; 194 p
 cargo build --release --target wasm32-unknown-unknown -p emu --lib   # the wasm build must keep compiling (needs: rustup target add wasm32-unknown-unknown)
 for t in tools/native-sockets-test.mjs tools/zip-test.mjs web/context-menu-test.mjs web/lir-policy-test.mjs web/log-setting-test.mjs \
          web/nanojit-leaf-test.mjs web/nanojit-loop-test.mjs web/nanojit-memory-test.mjs web/nanojit-number-test.mjs \
-         web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs web/bridge-eval-test.mjs tools/firefox-manifest-test.mjs; do node "$t" || exit 1; done
+         web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs web/bridge-eval-test.mjs tools/firefox-manifest-test.mjs tools/rtmfp-mini-test.mjs; do node "$t" || exit 1; done
 (cd ui && npm ci && npm run build)                                # type-checks and builds the settings UI
 (cd native/helper && go vet ./... && go build -o /tmp/flash-helper . ) && node native/helper-test.mjs /tmp/flash-helper
 ```

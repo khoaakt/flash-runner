@@ -109,5 +109,54 @@ ff.p.stdin.end();
 const stranger = spawnSync(bin, [join(tmpdir(), 'com.flashrunner.sockets.json'), 'someone-else@example.com'], { input: '', timeout: 5000 });
 check('an unknown add-on id does not start the helper', stranger.status === 2, 'exit ' + stranger.status);
 
+// ---- UDP (RTMFP): off by default, then bind / send / reply / unsolicited datagrams / close
+{
+  const dgram = await import('node:dgram');
+  const off = start({ allowPrivate: true });
+  off.send({ t: 'hello', rid: 1 }); const offHello = await off.wait((m) => m.rid === 1);
+  off.send({ t: 'udp-bind', rid: 2, port: 0 }); const offBind = await off.wait((m) => m.rid === 2);
+  check('UDP is off by default (hello says so, bind is refused)', offHello.udp === false && !offBind.ok && offBind.code === 'EDENIED' && /allowUDP/.test(offBind.message), JSON.stringify([offHello, offBind]));
+  off.p.stdin.end();
+
+  const server = dgram.createSocket('udp4'), seen = [];
+  server.on('message', (msg, rinfo) => { seen.push({ msg, rinfo }); if (msg.toString() === 'ping') server.send(Buffer.from('pong'), rinfo.port, rinfo.address); });
+  await new Promise((r) => server.bind(0, '127.0.0.1', r));
+  const sport = server.address().port;
+  const u = start({ allowPrivate: true, allowUDP: true });
+  u.send({ t: 'hello', rid: 1 }); const uHello = await u.wait((m) => m.rid === 1);
+  check('hello advertises UDP when enabled', uHello.udp === true, JSON.stringify(uHello));
+  u.send({ t: 'udp-bind', rid: 2, port: 0 }); const bound = await u.wait((m) => m.rid === 2);
+  check('udp-bind gives an id and the bound port', bound.ok && bound.id > 0 && bound.local.port > 0, JSON.stringify(bound));
+  u.send({ t: 'udp-send', rid: 3, id: bound.id, host: '127.0.0.1', port: sport, data: Buffer.from('ping').toString('base64') });
+  const sent = await u.wait((m) => m.rid === 3);
+  const reply = await u.wait((m) => m.t === 'udp-data' && m.id === bound.id);
+  check('a datagram reaches the server from the bound port and the reply comes back', sent.ok && sent.n === 4 && seen.length === 1 && seen[0].rinfo.port === bound.local.port && Buffer.from(reply.data, 'base64').toString() === 'pong' && reply.port === sport, JSON.stringify({ sent, reply, seen: seen.length }));
+  // a stranger that was never sent to must not get through
+  const stranger = dgram.createSocket('udp4'); let strangerBound = true;
+  await new Promise((r) => { stranger.once('error', () => { strangerBound = false; r(); }); stranger.bind(0, '127.0.0.2', r); });   // 127.0.0.2 is another loopback address on Linux and Windows, absent on macOS
+  const before = u.events.length;
+  if (strangerBound) stranger.send(Buffer.from('intruder'), bound.local.port, '127.0.0.1');
+  await new Promise((r) => setTimeout(r, 400));
+  if (!strangerBound) console.log('SKIP a datagram from an address nobody was sent to is dropped (this OS has no 127.0.0.2)'); else check('a datagram from an address nobody was sent to is dropped', !u.events.slice(before).some((m) => m.t === 'udp-data' && Buffer.from(m.data, 'base64').toString() === 'intruder'), JSON.stringify(u.events.slice(before)));
+  stranger.close();
+  u.send({ t: 'udp-send', rid: 4, id: bound.id, host: '127.0.0.1', port: sport, data: Buffer.alloc(70000).toString('base64') });
+  const big2 = await u.wait((m) => m.rid === 4);
+  check('an oversized datagram is refused', !big2.ok && big2.code === 'EINVAL', JSON.stringify(big2));
+  u.send({ t: 'udp-close', id: bound.id });
+  await new Promise((r) => setTimeout(r, 200));
+  u.send({ t: 'udp-send', rid: 5, id: bound.id, host: '127.0.0.1', port: sport, data: Buffer.from('x').toString('base64') });
+  const closed = await u.wait((m) => m.rid === 5);
+  check('sending on a closed UDP socket fails', !closed.ok && closed.code === 'EPIPE', JSON.stringify(closed));
+  u.p.stdin.end();
+  // public addresses only unless allowPrivate
+  const pub = start({ allowUDP: true });
+  pub.send({ t: 'udp-bind', rid: 1, port: 0 }); const pb = await pub.wait((m) => m.rid === 1);
+  pub.send({ t: 'udp-send', rid: 2, id: pb.id, host: '127.0.0.1', port: sport, data: Buffer.from('x').toString('base64') });
+  const denied = await pub.wait((m) => m.rid === 2);
+  check('UDP to a private address is refused by default', !denied.ok && denied.code === 'EDENIED', JSON.stringify(denied));
+  pub.p.stdin.end();
+  server.close();
+}
+
 console.log(failed ? `${failed} FAILED` : 'all ok');
 process.exit(failed ? 1 : 0);

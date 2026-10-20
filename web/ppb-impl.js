@@ -13,6 +13,7 @@ import { buildGLES2 } from './ppb-gles2.js';
 import { buildSockets } from './ppb-sockets.js';
 import { buildFiles } from './ppb-files.js';
 import { buildMedia } from './ppb-media.js';
+import { buildUdp } from './ppb-udp.js';
 
 export function buildImpl(host) {
   const impl = {};
@@ -258,6 +259,6 @@ export function buildImpl(host) {
     GetCode(tid, r) { return host.mkVar(ie(r)?.key?.codeStr ?? ''); },
   };
 
-  Object.assign(impl, buildNet(host), buildAudio(host), buildFlash(host), buildMisc(host), buildGLES2(host), buildSockets(host), buildFiles(host), buildMedia(host));
+  Object.assign(impl, buildNet(host), buildAudio(host), buildFlash(host), buildMisc(host), buildGLES2(host), buildSockets(host), buildFiles(host), buildMedia(host), buildUdp(host));
   return impl;
 }

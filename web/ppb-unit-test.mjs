@@ -435,6 +435,42 @@ check('resource ids start above the reserved loops (1 main, 2 audio)', pep.nextR
   check('id is UTF-16 and NUL terminated', id[0] === 80 && id[1] === 0 && id[2] === 97 && id[8] === 65 && id[9] === 0 && id[10] === 0 && id[11] === 0, JSON.stringify(id));
   check('unused pad slots stay zero', pep.u32(it(2) + 464) === 0 && pep.u32(it(3)) === 0);
 }
+// ---- UDP (RTMFP): PPB_UDPSocket;1.2 and PPB_HostResolver;1.0 on a fake backend
+{
+  const sent = [], closed = [];
+  const backend = { onUdp: () => {}, udpBind: async (ip, port) => ({ id: 77, local: { ip: '0.0.0.0', port: 40000 } }), udpSend: async (id, ip, port, bytes) => { sent.push({ id, ip, port, bytes: Array.from(bytes) }); return bytes.length; }, udpClose: (id) => closed.push(id), resolve: async (name) => (name === 'media.example' ? ['203.0.113.7', '2001:db8::7'] : Promise.reject({ code: 'ENOTFOUND' })) };
+  pep.opts.sockets = backend; pep.instances.set(1, { id: 1 });
+  const U = 'PPB_UDPSocket;1.2', ip4 = pep.alloc(8); pep.bytes(ip4, 8).set([0x4e, 0x3c, 203, 0, 113, 9, 0, 0]);       // port 20028, 203.0.113.9
+  const dst = call('PPB_NetAddress', 'CreateFromIPv4Address', MAIN, 1, ip4), any = call('PPB_NetAddress', 'CreateFromIPv4Address', MAIN, 1, pep.alloc(8));
+  const s = call(U, 'Create', MAIN, 1);
+  check('a UDP socket resource is created', call(U, 'IsUDPSocket', MAIN, s) === 1);
+  check('sending before Bind fails', call(U, 'SendTo', MAIN, s, pep.alloc(4), 4, dst, { func: 0, user: 0, flags: 0 }) === -2);
+  const bindRc = await call(U, 'Bind', BG, s, any, { func: 0, user: 0, flags: 0 });
+  check('Bind goes to the backend and the bound address is reported', bindRc === 0 && call('PPB_NetAddress', 'DescribeAsIPv4Address', MAIN, call(U, 'GetBoundAddress', MAIN, s), pep.alloc(8)) === 1);
+  const payload = pep.alloc(4); pep.bytes(payload, 4).set([1, 2, 3, 4]);
+  const sendRc = await call(U, 'SendTo', BG, s, payload, 4, dst, { func: 0, user: 0, flags: 0 });
+  check('SendTo hands the datagram, address and port to the backend', sendRc === 4 && sent.length === 1 && sent[0].ip === '203.0.113.9' && sent[0].port === 20028 && sent[0].bytes.join() === '1,2,3,4', JSON.stringify(sent));
+  backend.onUdp({ t: 'data', id: 77, ip: '203.0.113.9', port: 20028, bytes: Uint8Array.of(9, 8, 7, 6, 5) });      // arrives before anyone is receiving: queued
+  const rbuf = pep.alloc(16), raddr = pep.alloc(4);
+  const rc = call(U, 'RecvFrom', MAIN, s, rbuf, 3, raddr, { func: 1, user: 0, flags: 0 });
+  check('RecvFrom takes the queued datagram, truncated to the buffer, with its source address', rc === PP_OK_COMPLETIONPENDING && Array.from(pep.ro(rbuf, 3)).join() === '9,8,7' && call('PPB_NetAddress', 'GetFamily', MAIN, pep.u32(raddr)) === 1, `${rc} ${Array.from(pep.ro(rbuf, 3))}`);
+  const rc2 = call(U, 'RecvFrom', MAIN, s, rbuf, 16, raddr, { func: 1, user: 0, flags: 0 }), rc3 = call(U, 'RecvFrom', MAIN, s, rbuf, 16, raddr, { func: 1, user: 0, flags: 0 });
+  check('only one RecvFrom may wait at a time', rc2 === PP_OK_COMPLETIONPENDING && rc3 === PP_ERROR_INPROGRESS, `${rc2} ${rc3}`);
+  backend.onUdp({ t: 'data', id: 77, ip: '203.0.113.9', port: 20028, bytes: Uint8Array.of(42) });
+  check('a datagram arriving later completes the waiting RecvFrom', pep.ro(rbuf, 1)[0] === 42);
+  call(U, 'Close', MAIN, s);
+  check('Close tells the backend', closed.join() === '77');
+  const R = 'PPB_HostResolver;1.0', hrz = call(R, 'Create', MAIN, 1), nm = pep.allocCStr('media.example');
+  check('a literal address resolves without the backend', call(R, 'Resolve', MAIN, hrz, pep.allocCStr('198.51.100.4'), 1935, 0, { func: 0, user: 0, flags: 0 }) === 0 && call(R, 'GetNetAddressCount', MAIN, hrz) === 1);
+  const rr = await call(R, 'Resolve', BG, hrz, nm, 1935, 0, { func: 0, user: 0, flags: 0 });
+  check('a name goes to the backend; both addresses come back with the port', rr === 0 && call(R, 'GetNetAddressCount', MAIN, hrz) === 2 && pep.getRes(call(R, 'GetNetAddress', MAIN, hrz, 1), 'netaddress').port === 1935);
+  const nf = await call(R, 'Resolve', BG, hrz, pep.allocCStr('nowhere.invalid'), 1935, 0, { func: 0, user: 0, flags: 0 });
+  check('an unknown name fails with NAME_NOT_RESOLVED', nf === -110, String(nf));
+  delete pep.opts.sockets;
+  const s2 = call(U, 'Create', MAIN, 1);
+  check('without a UDP-capable backend Bind says not supported', (await call(U, 'Bind', BG, s2, any, { func: 0, user: 0, flags: 0 })) === -12);
+}
+
 // ---- Camera and microphone conversions: I420 planes (BT.601 limited range) and 16-bit PCM
 {
   const { rgbaToI420, floatToPcm16 } = await import('./ppb-media.js');

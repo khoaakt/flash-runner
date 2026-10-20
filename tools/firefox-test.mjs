@@ -14,6 +14,7 @@ import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync, readF
 import { createServer } from 'node:http';
 import { extname, join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { decodePacket, encodePacket, parseHello, responderHello, CHUNK } from './lib/rtmfp-mini.mjs';
 import { ARM_FIREFOX, REPORT_FIREFOX, describePdf, expectedPrint } from './lib/print-spy.mjs';
 import { probeResult } from './lib/png-probe.mjs';
 
@@ -28,6 +29,8 @@ const pickText = arg('--pick-text', null);          // content of the file the p
 const expectDownload = arg('--expect-download', null);   // regex a downloaded file's content must match
 const expectPrint = process.argv.includes('--expect-print');   // the movie's PrintJob must hand the frame a PDF with a red 100x100 image on a Letter page
 const saveDir = arg('--save-dir', null) ? resolve(arg('--save-dir', null)) : null;            // downloads of the player frame's save dialog go here
+const UDP_RECV = /\[udp\] first datagram received: \d+ bytes from 127\.0\.0\.1:/, UDP_LINE = /\[udp\]/;
+const withUdp = process.argv.includes('--udp-server');   // run tests/ext/rtmfp.html against a local UDP server that answers like the first step of an RTMFP server (needs the helper installed for Firefox, with UDP support)
 const withSockets = process.argv.includes('--sockets');   // run tests/ext/sock.html against a local echo server through the native helper (needs the helper installed for Firefox)
 const seconds = +arg('--seconds', 15);
 const shots = resolve(arg('--shots', join(root, 'tests/out')));
@@ -63,6 +66,21 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 if (saveDir) mkdirSync(saveDir, { recursive: true });
+const udpSeen = []; let udpServer = null;
+if (withUdp) {
+  const { createSocket } = await import('node:dgram');
+  const { tmpdir } = await import('node:os');
+  const cfg = join(tmpdir(), 'flash-runner-ff-udp.json'); writeFileSync(cfg, JSON.stringify({ allowPrivate: true, allowUDP: true })); process.env.FLASHRUNNER_SOCKETS_CONFIG = cfg;
+  udpServer = createSocket('udp4');
+  udpServer.on('message', (msg, rinfo) => {
+    let p = null; try { p = decodePacket(msg); } catch { /* not RTMFP */ }
+    udpSeen.push({ len: msg.length, from: rinfo.port, sid: p?.sid, checksumOk: p?.ok, chunks: (p?.chunks || []).map((c) => c.type.toString(16)) });
+    const hello = p?.chunks.find((c) => c.type === CHUNK.HELLO);
+    if (hello) udpServer.send(encodePacket([responderHello(parseHello(hello.data).tag)], p.timestamp ?? 0), rinfo.port, rinfo.address);
+  });
+  await new Promise((r) => udpServer.bind(0, '127.0.0.1', r));
+  page = 'tests/ext/rtmfp.html?url=' + encodeURIComponent('rtmfp://127.0.0.1:' + udpServer.address().port + '/app');
+}
 let sockServer = null, sockSeen = '';
 if (withSockets) {    // the helper refuses loopback unless told otherwise; geckodriver, Firefox and the helper inherit this variable
   const { createServer: tcp } = await import('node:net');
@@ -185,6 +203,13 @@ try {
     if (late) console.log(`   (the square was ${r.pass ? 'found' : 'still missing'} ${late / 1000} s after the wait)`);
   }
   console.log('   screenshot', shotFile);
+  if (withUdp) {
+    const all = gdLog.join('');
+    console.log('   udp datagrams the server saw:', JSON.stringify(udpSeen.slice(0, 4)), 'count', udpSeen.length);
+    check('Flash sent RTMFP hello datagrams through the helper (valid checksum, chunk 0x30)', udpSeen.length >= 1 && udpSeen[0].checksumOk && udpSeen[0].chunks.includes('30'), JSON.stringify(udpSeen.slice(0, 3)));
+    check('after our responder hello Flash sent its initial keying chunk (0x38)', udpSeen.some((u) => u.chunks.includes('38')), JSON.stringify(udpSeen.slice(0, 6)));
+    check('Flash read the reply through the helper', UDP_RECV.test(all), all.split(String.fromCharCode(10)).filter((l) => UDP_LINE.test(l)).join(' | ') || 'no [udp] lines');
+  }
   if (withSockets) {
     const port = sockServer.address().port, all = gdLog.join('');
     check('a Flash socket reaches the helper from the player frame (through the background relay)', all.includes(`[sock] connect 127.0.0.1:${port} -> ok`), all.split('\n').filter((l) => /\[sock\]/.test(l)).join('\n') || 'no [sock] lines');

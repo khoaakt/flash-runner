@@ -38,7 +38,7 @@ jobs:
         run: |
           for t in tools/native-sockets-test.mjs tools/zip-test.mjs web/context-menu-test.mjs web/lir-policy-test.mjs web/log-setting-test.mjs \
                    web/nanojit-leaf-test.mjs web/nanojit-loop-test.mjs web/nanojit-memory-test.mjs web/nanojit-number-test.mjs \
-                   web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs web/bridge-eval-test.mjs tools/firefox-manifest-test.mjs; do
+                   web/plugin-accelerators-test.mjs web/ppb-unit-test.mjs web/probe-observer-test.mjs web/bridge-eval-test.mjs tools/firefox-manifest-test.mjs tools/rtmfp-mini-test.mjs; do
             echo "::group::$t"
             node "$t"
             echo "::endgroup::"

@@ -45,6 +45,8 @@ add-on id (`flash-runner@khoaakt.github.io`) and checks `allowed_extensions`; it
 It refuses loopback, private and link-local destinations unless `~/.flash-runner/sockets.json` contains `{"allowPrivate": true}`. The same file
 accepts `allowHosts` / `denyHosts` globs and `maxSockets`. The `FLASHRUNNER_SOCKETS_CONFIG` environment variable points to another config file.
 
+UDP (used only by RTMFP) is off unless the file contains `{"allowUDP": true}`. With it the helper binds UDP sockets for Flash, resolves host names for it, and passes on only datagrams from addresses the socket has already sent to; the same address rules apply to destinations. `docs/STATUS.md` (PoC: UDP and RTMFP) says what has been shown to work.
+
 ## Installing it
 
 The extension's settings page offers the installer for the user's OS. Double-clicking `FlashHelper-Setup.exe` (Windows) installs it for the

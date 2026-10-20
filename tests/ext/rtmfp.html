@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>rtmfp</title></head>
+<body style="margin:8px">
+<!-- ?url=rtmfp://host:port/app -->
+<script>
+  var url = new URLSearchParams(location.search).get('url') || 'rtmfp://127.0.0.1:19350/app';
+  document.write('<embed src="/tests/swf/rtmfp.swf" type="application/x-shockwave-flash" width="500" height="300" flashvars="url=' + encodeURIComponent(url) + '">');
+</script>
+</body></html>
